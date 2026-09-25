@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import './App.css'
 
 function App() {
@@ -11,9 +11,80 @@ function App() {
   const [error, setError] = useState('')
   const [videoUrl, setVideoUrl] = useState('')
 
+  const [selectedImage, setSelectedImage] = useState(null)
+  const [imagePreview, setImagePreview] = useState('')
+
+  const fileInputRef = useRef(null)
+
+  const openImagePicker = () => {
+    fileInputRef.current?.click()
+  }
+
+  const handleImageChange = (event) => {
+    const file = event.target.files?.[0]
+
+    if (!file) {
+      return
+    }
+
+    const allowedTypes = [
+      'image/jpeg',
+      'image/png',
+      'image/webp',
+    ]
+
+    if (!allowedTypes.includes(file.type)) {
+      setError(
+        'Please select a JPG, PNG, or WebP image.'
+      )
+      return
+    }
+
+    if (file.size > 10 * 1024 * 1024) {
+      setError(
+        'Please select an image smaller than 10 MB.'
+      )
+      return
+    }
+
+    if (imagePreview) {
+      URL.revokeObjectURL(imagePreview)
+    }
+
+    const previewUrl =
+      URL.createObjectURL(file)
+
+    setSelectedImage(file)
+    setImagePreview(previewUrl)
+
+    setVideoUrl('')
+    setError('')
+    setMessage('')
+  }
+
+  const removeImage = () => {
+    if (imagePreview) {
+      URL.revokeObjectURL(imagePreview)
+    }
+
+    setSelectedImage(null)
+    setImagePreview('')
+    setError('')
+    setMessage('')
+
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ''
+    }
+  }
+
   const generateVideo = async () => {
     if (!prompt.trim()) {
-      setError('Please describe the video you want to create.')
+      setError(
+        selectedImage
+          ? 'Describe how you want the image to move.'
+          : 'Please describe the video you want to create.'
+      )
+
       setMessage('')
       return
     }
@@ -21,21 +92,43 @@ function App() {
     try {
       setIsGenerating(true)
       setError('')
-      setMessage('ANNIVEO is creating your video...')
       setVideoUrl('')
+
+      setMessage(
+        selectedImage
+          ? 'ANNIVEO is animating your image...'
+          : 'ANNIVEO is creating your video...'
+      )
+
+      const formData = new FormData()
+
+      formData.append(
+        'prompt',
+        prompt.trim()
+      )
+
+      formData.append(
+        'ratio',
+        ratio
+      )
+
+      formData.append(
+        'duration',
+        duration
+      )
+
+      if (selectedImage) {
+        formData.append(
+          'image',
+          selectedImage
+        )
+      }
 
       const response = await fetch(
         'http://localhost:5000/api/generate-video',
         {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            prompt,
-            ratio,
-            duration,
-          }),
+          body: formData,
         }
       )
 
@@ -43,7 +136,9 @@ function App() {
 
       if (!response.ok) {
         throw new Error(
-          data.message || 'Video generation failed.'
+          typeof data.message === 'string'
+            ? data.message
+            : 'Video generation failed.'
         )
       }
 
@@ -54,7 +149,12 @@ function App() {
       }
 
       setVideoUrl(data.videoUrl)
-      setMessage('Your ANNIVEO video is ready.')
+
+      setMessage(
+        data.mode === 'image-to-video'
+          ? 'Your ANNIVEO image-to-video creation is ready.'
+          : 'Your ANNIVEO video is ready.'
+      )
     } catch (err) {
       console.error(err)
 
@@ -75,7 +175,9 @@ function App() {
       <header className="topbar">
 
         <div className="brand">
-          <div className="logo-icon">▶</div>
+          <div className="logo-icon">
+            ▶
+          </div>
 
           <div>
             <h1>ANNIVEO</h1>
@@ -84,6 +186,7 @@ function App() {
         </div>
 
         <nav>
+
           <button
             type="button"
             className="nav-link active-nav"
@@ -104,6 +207,7 @@ function App() {
           >
             A
           </button>
+
         </nav>
 
       </header>
@@ -169,129 +273,288 @@ function App() {
                 AI VIDEO GENERATOR
               </p>
 
-              <h2>Create your video</h2>
+              <h2>
+                Create your video
+              </h2>
 
               <p className="description">
-                Turn your idea into a cinematic
-                AI-generated video.
+                Turn your idea or image into a
+                cinematic AI-generated video.
               </p>
 
               <label htmlFor="videoPrompt">
-                Describe your video
+                {selectedImage
+                  ? 'Describe the movement'
+                  : 'Describe your video'}
               </label>
 
               <textarea
                 id="videoPrompt"
                 value={prompt}
                 onChange={(e) =>
-                  setPrompt(e.target.value)
+                  setPrompt(
+                    e.target.value
+                  )
                 }
-                placeholder="A woman walks through a futuristic African city at night, cinematic lighting..."
+                placeholder={
+                  selectedImage
+                    ? 'The woman slowly turns toward the camera while her hair moves gently in the breeze...'
+                    : 'A woman walks through a futuristic African city at night, cinematic lighting...'
+                }
+              />
+
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                onChange={
+                  handleImageChange
+                }
+                style={{
+                  display: 'none',
+                }}
               />
 
               <div className="prompt-tools">
 
-                <button type="button">
-                  ＋ Add Image
+                <button
+                  type="button"
+                  onClick={
+                    openImagePicker
+                  }
+                >
+                  ＋{' '}
+                  {selectedImage
+                    ? 'Replace Image'
+                    : 'Add Image'}
                 </button>
 
-                <button type="button">
+                <button
+                  type="button"
+                >
                   ✦ Enhance Prompt
                 </button>
 
               </div>
 
+              {selectedImage && (
+
+                <div
+                  style={{
+                    marginTop: '14px',
+                    padding: '10px',
+                    border:
+                      '1px solid #26352f',
+                    borderRadius:
+                      '12px',
+                    background:
+                      '#101713',
+                  }}
+                >
+
+                  <img
+                    src={imagePreview}
+                    alt="Selected reference"
+                    style={{
+                      display:
+                        'block',
+                      width: '100%',
+                      maxHeight:
+                        '180px',
+                      objectFit:
+                        'contain',
+                      borderRadius:
+                        '8px',
+                      background:
+                        '#080b09',
+                    }}
+                  />
+
+                  <div
+                    style={{
+                      display: 'flex',
+                      justifyContent:
+                        'space-between',
+                      alignItems:
+                        'center',
+                      gap: '10px',
+                      marginTop:
+                        '9px',
+                    }}
+                  >
+
+                    <span
+                      style={{
+                        color:
+                          '#aab5af',
+                        fontSize:
+                          '11px',
+                        overflow:
+                          'hidden',
+                        textOverflow:
+                          'ellipsis',
+                        whiteSpace:
+                          'nowrap',
+                      }}
+                    >
+                      {
+                        selectedImage.name
+                      }
+                    </span>
+
+                    <button
+                      type="button"
+                      onClick={
+                        removeImage
+                      }
+                    >
+                      Remove
+                    </button>
+
+                  </div>
+
+                </div>
+
+              )}
+
               <div className="setting-block">
 
-                <label>Aspect Ratio</label>
+                <label>
+                  Aspect Ratio
+                </label>
 
                 <div className="options">
 
-                  {['16:9', '9:16'].map((item) => (
-                    <button
-                      type="button"
-                      key={item}
-                      className={
-                        ratio === item
-                          ? 'selected'
-                          : ''
-                      }
-                      onClick={() =>
-                        setRatio(item)
-                      }
-                    >
-                      {item}
-                    </button>
-                  ))}
+                  {[
+                    '16:9',
+                    '9:16',
+                  ].map(
+                    (item) => (
+
+                      <button
+                        type="button"
+                        key={item}
+                        className={
+                          ratio ===
+                          item
+                            ? 'selected'
+                            : ''
+                        }
+                        onClick={() =>
+                          setRatio(
+                            item
+                          )
+                        }
+                      >
+                        {item}
+                      </button>
+
+                    )
+                  )}
 
                 </div>
+
               </div>
 
               <div className="setting-block">
 
-                <label>Duration</label>
+                <label>
+                  Duration
+                </label>
 
                 <div className="options">
 
-                  {['5s', '10s'].map((item) => (
-                    <button
-                      type="button"
-                      key={item}
-                      className={
-                        duration === item
-                          ? 'selected'
-                          : ''
-                      }
-                      onClick={() =>
-                        setDuration(item)
-                      }
-                    >
-                      {item}
-                    </button>
-                  ))}
+                  {[
+                    '5s',
+                    '10s',
+                  ].map(
+                    (item) => (
+
+                      <button
+                        type="button"
+                        key={item}
+                        className={
+                          duration ===
+                          item
+                            ? 'selected'
+                            : ''
+                        }
+                        onClick={() =>
+                          setDuration(
+                            item
+                          )
+                        }
+                      >
+                        {item}
+                      </button>
+
+                    )
+                  )}
 
                 </div>
+
               </div>
 
               <button
                 type="button"
                 className="generate"
-                onClick={generateVideo}
-                disabled={isGenerating}
+                onClick={
+                  generateVideo
+                }
+                disabled={
+                  isGenerating
+                }
               >
                 {isGenerating
-                  ? '✦ Creating your video...'
-                  : '✦ Generate Video'}
+                  ? selectedImage
+                    ? '✦ Animating image...'
+                    : '✦ Creating your video...'
+                  : selectedImage
+                    ? '✦ Generate from Image'
+                    : '✦ Generate Video'}
               </button>
 
               <p className="cost">
-                AI generation may use provider credits
+                AI generation may use
+                provider credits
               </p>
 
               {message && (
+
                 <p
                   style={{
-                    color: '#28ec91',
-                    textAlign: 'center',
-                    fontSize: '12px',
-                    marginTop: '12px',
+                    color:
+                      '#28ec91',
+                    textAlign:
+                      'center',
+                    fontSize:
+                      '12px',
+                    marginTop:
+                      '12px',
                   }}
                 >
                   {message}
                 </p>
+
               )}
 
               {error && (
+
                 <p
                   style={{
-                    color: '#ff6b6b',
-                    textAlign: 'center',
-                    fontSize: '12px',
-                    marginTop: '12px',
+                    color:
+                      '#ff6b6b',
+                    textAlign:
+                      'center',
+                    fontSize:
+                      '12px',
+                    marginTop:
+                      '12px',
                   }}
                 >
                   {error}
                 </p>
+
               )}
 
             </div>
@@ -308,19 +571,80 @@ function App() {
                     autoPlay
                     playsInline
                     style={{
-                      width: '100%',
-                      height: '100%',
-                      objectFit: 'contain',
-                      background: '#000000',
+                      width:
+                        '100%',
+                      height:
+                        '100%',
+                      objectFit:
+                        'contain',
+                      background:
+                        '#000000',
                     }}
                   />
+
+                ) : imagePreview ? (
+
+                  <div
+                    style={{
+                      width:
+                        '100%',
+                      height:
+                        '100%',
+                      position:
+                        'relative',
+                      background:
+                        '#050706',
+                    }}
+                  >
+
+                    <img
+                      src={
+                        imagePreview
+                      }
+                      alt="ANNIVEO reference"
+                      style={{
+                        width:
+                          '100%',
+                        height:
+                          '100%',
+                        objectFit:
+                          'contain',
+                      }}
+                    />
+
+                    <div
+                      style={{
+                        position:
+                          'absolute',
+                        left:
+                          '14px',
+                        bottom:
+                          '14px',
+                        padding:
+                          '6px 10px',
+                        borderRadius:
+                          '20px',
+                        background:
+                          'rgba(0,0,0,0.7)',
+                        color:
+                          '#ffffff',
+                        fontSize:
+                          '11px',
+                      }}
+                    >
+                      Reference image
+                    </div>
+
+                  </div>
 
                 ) : (
 
                   <div className="preview-content">
 
                     <div className="play">
-                      {isGenerating ? '✦' : '▶'}
+                      {isGenerating
+                        ? '✦'
+                        : '▶'}
                     </div>
 
                     <h3>
@@ -332,7 +656,7 @@ function App() {
                     <p>
                       {isGenerating
                         ? 'AI video generation can take a few minutes. Keep this page open.'
-                        : 'Enter a prompt and generate your first ANNIVEO video.'}
+                        : 'Enter a prompt or add an image to create your first ANNIVEO video.'}
                     </p>
 
                   </div>
@@ -350,22 +674,28 @@ function App() {
                       ? 'Generating'
                       : videoUrl
                         ? 'Video ready'
-                        : 'Ready to create'}
+                        : selectedImage
+                          ? 'Image ready'
+                          : 'Ready to create'}
                   </span>
 
                   <p>
-                    {ratio} • {duration}
+                    {ratio} •{' '}
+                    {duration}
                   </p>
 
                 </div>
 
                 <div className="video-actions">
 
-                  <button type="button">
+                  <button
+                    type="button"
+                  >
                     ♡
                   </button>
 
                   {videoUrl && (
+
                     <button
                       type="button"
                       onClick={() =>
@@ -377,9 +707,12 @@ function App() {
                     >
                       ↓
                     </button>
+
                   )}
 
-                  <button type="button">
+                  <button
+                    type="button"
+                  >
                     ⋮
                   </button>
 
@@ -397,16 +730,21 @@ function App() {
 
               <div>
 
-                <h2>My Creations</h2>
+                <h2>
+                  My Creations
+                </h2>
 
                 <p>
-                  Your recent AI videos will
-                  appear here.
+                  Your recent AI
+                  videos will appear
+                  here.
                 </p>
 
               </div>
 
-              <button type="button">
+              <button
+                type="button"
+              >
                 View All
               </button>
 
@@ -416,41 +754,55 @@ function App() {
 
               <div
                 style={{
-                  marginTop: '15px',
-                  maxWidth: '300px',
+                  marginTop:
+                    '15px',
+                  maxWidth:
+                    '300px',
                 }}
               >
+
                 <video
                   src={videoUrl}
                   controls
                   style={{
-                    width: '100%',
-                    borderRadius: '12px',
-                    background: '#000000',
+                    width:
+                      '100%',
+                    borderRadius:
+                      '12px',
+                    background:
+                      '#000000',
                   }}
                 />
 
                 <p
                   style={{
-                    color: '#9aa69f',
-                    fontSize: '12px',
+                    color:
+                      '#9aa69f',
+                    fontSize:
+                      '12px',
                   }}
                 >
                   {prompt}
                 </p>
+
               </div>
 
             ) : (
 
               <div className="empty-library">
 
-                <div>▶</div>
+                <div>
+                  ▶
+                </div>
 
-                <h3>No videos yet</h3>
+                <h3>
+                  No videos yet
+                </h3>
 
                 <p>
-                  Your first ANNIVEO creation
-                  will appear here.
+                  Your first ANNIVEO
+                  creation will
+                  appear here.
                 </p>
 
               </div>
@@ -460,7 +812,9 @@ function App() {
           </section>
 
         </main>
+
       </div>
+
     </div>
   )
 }
