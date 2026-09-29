@@ -445,7 +445,7 @@ function App() {
         }`}
         onClick={() => setPage('generate')}
       >
-        <span>âœ¦</span>
+        <span>✦</span>
         Generate
       </button>
 
@@ -453,7 +453,7 @@ function App() {
         type="button"
         className="side-item"
       >
-        <span>â–£</span>
+        <span>▣</span>
         Projects
       </button>
 
@@ -464,7 +464,7 @@ function App() {
         }`}
         onClick={() => setPage('characters')}
       >
-        <span>â™™</span>
+        <span>♫</span>
         Characters
       </button>
 
@@ -480,7 +480,7 @@ function App() {
         type="button"
         className="side-item"
       >
-        <span>âš™</span>
+        <span>⚙</span>
         Settings
       </button>
 
@@ -546,7 +546,7 @@ function App() {
                     fontSize: '11px',
                   }}
                 >
-                  Character selected â€¢{' '}
+                  Character selected •{' '}
                   {getCharacterImages(selectedCharacter).length}{' '}
                   reference
                   {getCharacterImages(selectedCharacter).length === 1
@@ -590,15 +590,15 @@ function App() {
             <button
               type="button"
               onClick={openImagePicker}
-            >
-              ï¼‹{' '}
+         
+              ＋{' '}
               {selectedImage
                 ? 'Replace Image'
                 : 'Add Image'}
             </button>
 
             <button type="button">
-              âœ¦ Enhance Prompt
+              ✦ Enhance Prompt
             </button>
           </div>
 
@@ -770,7 +770,7 @@ function App() {
             ) : (
               <div className="preview-content">
                 <div className="play">
-                  {isGenerating ? 'âœ¦' : 'â–¶'}
+                  {isGenerating ? 'âœ¦' : '▶'}
                 </div>
 
                 <h3>
@@ -807,7 +807,7 @@ function App() {
             </div>
 
             <div className="video-actions">
-              <button type="button">â™¡</button>
+              <button type="button">♡</button>
 
               {videoUrl && (
                 <button
@@ -816,11 +816,11 @@ function App() {
                     window.open(videoUrl, '_blank')
                   }
                 >
-                  â†“
+                  ↓
                 </button>
               )}
 
-              <button type="button">â‹®</button>
+              <button type="button">⋮</button>
             </div>
           </div>
         </div>
@@ -1019,7 +1019,7 @@ function App() {
                         cursor: 'pointer',
                       }}
                     >
-                      Ã—
+                      ×
                     </button>
 
                     {index === 0 && (
