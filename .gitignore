@@ -28,3 +28,5 @@ server/.env
 # ANNIVEO private/local files
 server/.env
 server/uploads/
+
+server/creations/*.mp4
