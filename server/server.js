@@ -1,7 +1,9 @@
-const express = require('express')
+﻿const express = require('express')
 const cors = require('cors')
 const dotenv = require('dotenv')
 const multer = require('multer')
+const fs = require('fs')
+const path = require('path')
 
 dotenv.config()
 
@@ -10,6 +12,49 @@ const PORT = 5000
 
 app.use(cors())
 app.use(express.json())
+const creationsDirectory = path.join(__dirname, 'creations')
+
+if (!fs.existsSync(creationsDirectory)) {
+  fs.mkdirSync(creationsDirectory, { recursive: true })
+}
+
+app.use('/creations', express.static(creationsDirectory))
+
+function safeFileName(value = 'video') {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 40) || 'video'
+}
+
+async function saveGeneratedVideo(sourceUrl, name = 'video') {
+  console.log('')
+  console.log('Saving video to ANNIVEO...')
+
+  const response = await fetch(sourceUrl)
+
+  if (!response.ok) {
+    throw new Error(
+      `Could not download generated video. HTTP ${response.status}`
+    )
+  }
+
+  const arrayBuffer = await response.arrayBuffer()
+  const buffer = Buffer.from(arrayBuffer)
+
+  const filename = `${safeFileName(name)}-${Date.now()}.mp4`
+  const filePath = path.join(creationsDirectory, filename)
+
+  await fs.promises.writeFile(filePath, buffer)
+
+  console.log('ANNIVEO video saved:', filename)
+
+  return {
+    filename,
+    videoUrl: `http://localhost:${PORT}/creations/${encodeURIComponent(filename)}`,
+  }
+}
 
 // --------------------------------------------------
 // Upload configuration
@@ -593,6 +638,12 @@ app.post(
         const result =
           await waitForRunwayTask(taskId)
 
+        const savedVideo =
+          await saveGeneratedVideo(
+            result.videoUrl,
+            characterName
+          )
+
         console.log('')
         console.log('======================================')
         console.log('CHARACTER VIDEO COMPLETED')
@@ -617,7 +668,9 @@ app.post(
           message:
             `${characterName}'s ANNIVEO video is ready.`,
 
-          videoUrl: result.videoUrl,
+          videoUrl: savedVideo.videoUrl,
+
+          filename: savedVideo.filename,
 
           taskId,
 
@@ -818,3 +871,7 @@ app.listen(PORT, () => {
 
   console.log('======================================')
 })
+
+
+
+

@@ -21,6 +21,8 @@ function App() {
   const [characterImages, setCharacterImages] = useState([])
   const [selectedCharacter, setSelectedCharacter] = useState(null)
 
+  const [creations, setCreations] = useState([])
+
   const fileInputRef = useRef(null)
   const characterInputRef = useRef(null)
 
@@ -61,6 +63,31 @@ function App() {
       setCharacters([])
     }
   }, [])
+
+  useEffect(() => {
+    try {
+      const savedCreations = JSON.parse(
+        localStorage.getItem('anniveo-creations') || '[]'
+      )
+
+      setCreations(Array.isArray(savedCreations) ? savedCreations : [])
+    } catch {
+      setCreations([])
+    }
+  }, [])
+
+  const saveCreations = (items) => {
+    setCreations(items)
+    localStorage.setItem('anniveo-creations', JSON.stringify(items))
+  }
+
+  const deleteCreation = (id) => {
+    const updatedCreations = creations.filter(
+      (creation) => creation.id !== id
+    )
+
+    saveCreations(updatedCreations)
+  }
 
   const saveCharacters = (items) => {
     setCharacters(items)
@@ -417,6 +444,23 @@ function App() {
 
       setVideoUrl(data.videoUrl)
 
+      const newCreation = {
+        id: Date.now(),
+        videoUrl: data.videoUrl,
+        prompt: prompt.trim(),
+        characterName: selectedCharacter?.name || '',
+        ratio,
+        duration,
+        mode: data.mode || (selectedCharacter ? 'character-video' : selectedImage ? 'image-to-video' : 'text-to-video'),
+        createdAt: new Date().toISOString(),
+      }
+
+      try {
+        saveCreations([newCreation, ...creations])
+      } catch (storageError) {
+        console.error('Could not save creation locally:', storageError)
+      }
+
       setMessage(
         data.mode === 'image-to-video'
           ? 'Your ANNIVEO image-to-video creation is ready.'
@@ -464,7 +508,7 @@ function App() {
         }`}
         onClick={() => setPage('characters')}
       >
-        <span>♫</span>
+        <span>♙</span>
         Characters
       </button>
 
@@ -472,7 +516,7 @@ function App() {
         type="button"
         className="side-item"
       >
-        <span>â™«</span>
+        <span>♫</span>
         Audio
       </button>
 
@@ -588,14 +632,11 @@ function App() {
 
           <div className="prompt-tools">
             <button
-              type="button"
-              onClick={openImagePicker}
-         
-              ＋{' '}
-              {selectedImage
-                ? 'Replace Image'
-                : 'Add Image'}
-            </button>
+  type="button"
+  onClick={openImagePicker}
+>
+  {selectedImage ? 'Replace Image' : 'Add Image'}
+</button>
 
             <button type="button">
               ✦ Enhance Prompt
@@ -702,12 +743,12 @@ function App() {
             disabled={isGenerating}
           >
             {isGenerating
-              ? 'âœ¦ Creating your video...'
+              ? '✦ Creating your video...'
               : selectedCharacter
-                ? `âœ¦ Generate with ${selectedCharacter.name}`
+                ? `✦ Generate with ${selectedCharacter.name}`
                 : selectedImage
-                  ? 'âœ¦ Generate from Image'
-                  : 'âœ¦ Generate Video'}
+                  ? '✦ Generate from Image'
+                  : '✦ Generate Video'}
           </button>
 
           <p className="cost">
@@ -770,7 +811,7 @@ function App() {
             ) : (
               <div className="preview-content">
                 <div className="play">
-                  {isGenerating ? 'âœ¦' : '▶'}
+                  {isGenerating ? '✦' : '▶'}
                 </div>
 
                 <h3>
@@ -802,7 +843,7 @@ function App() {
               </span>
 
               <p>
-                {ratio} â€¢ {duration}
+                {ratio} • {duration}
               </p>
             </div>
 
@@ -833,7 +874,7 @@ function App() {
             <p>Your recent AI videos will appear here.</p>
           </div>
 
-          <button type="button">
+          <button type="button" onClick={() => setPage('creations')}>
             View All
           </button>
         </div>
@@ -866,13 +907,107 @@ function App() {
           </div>
         ) : (
           <div className="empty-library">
-            <div>â–¶</div>
+            <div>▶</div>
 
             <h3>No videos yet</h3>
 
             <p>
               Your first ANNIVEO creation will appear here.
             </p>
+          </div>
+        )}
+      </section>
+    </main>
+  )
+
+  const MyCreationsPage = () => (
+    <main className="main">
+      <section style={{ maxWidth: '1100px', margin: '0 auto' }}>
+        <div className="section-heading">
+          <div>
+            <p className="eyebrow">ANNIVEO LIBRARY</p>
+            <h2>My Creations</h2>
+            <p>Your saved ANNIVEO videos appear here.</p>
+          </div>
+        </div>
+
+        {creations.length === 0 ? (
+          <div className="empty-library">
+            <div>▶</div>
+            <h3>No videos yet</h3>
+            <p>Your first completed ANNIVEO video will appear here.</p>
+          </div>
+        ) : (
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))',
+              gap: '18px',
+              marginTop: '24px',
+            }}
+          >
+            {creations.map((creation) => (
+              <article
+                key={creation.id}
+                style={{
+                  padding: '12px',
+                  border: '1px solid #26352f',
+                  borderRadius: '14px',
+                  background: '#101713',
+                }}
+              >
+                <video
+                  src={creation.videoUrl}
+                  controls
+                  playsInline
+                  style={{
+                    width: '100%',
+                    aspectRatio: '16 / 9',
+                    objectFit: 'contain',
+                    borderRadius: '10px',
+                    background: '#000000',
+                  }}
+                />
+
+                <p style={{ color: '#ffffff', fontSize: '13px' }}>
+                  {creation.prompt}
+                </p>
+
+                <p style={{ color: '#9aa69f', fontSize: '11px' }}>
+                  {creation.characterName
+                    ? `${creation.characterName} • `
+                    : ''}
+                  {creation.ratio} • {creation.duration} •{' '}
+                  {creation.mode === 'character-video'
+                    ? 'Character'
+                    : creation.mode === 'image-to-video'
+                      ? 'Image'
+                      : 'Text'}
+                </p>
+
+                <p style={{ color: '#748079', fontSize: '10px' }}>
+                  {new Date(creation.createdAt).toLocaleString()}
+                </p>
+
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button
+                    type="button"
+                    onClick={() => window.open(creation.videoUrl, '_blank')}
+                    style={{ cursor: 'pointer' }}
+                  >
+                    Open Video
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => deleteCreation(creation.id)}
+                    style={{ cursor: 'pointer' }}
+                  >
+                    Delete
+                  </button>
+                </div>
+              </article>
+            ))}
           </div>
         )}
       </section>
@@ -965,7 +1100,7 @@ function App() {
                 cursor: 'pointer',
               }}
             >
-              ï¼‹ Add Reference Images
+              ＋ Add Reference Images
             </button>
 
             <p
@@ -1067,7 +1202,7 @@ function App() {
 
             {characters.length === 0 ? (
               <div className="empty-library">
-                <div>â™™</div>
+                <div>♙</div>
 
                 <h3>No characters yet</h3>
 
@@ -1191,7 +1326,7 @@ function App() {
     <div className="app">
       <header className="topbar">
         <div className="brand">
-          <div className="logo-icon">â–¶</div>
+          <div className="logo-icon">▶</div>
 
           <div>
             <h1>ANNIVEO</h1>
@@ -1212,7 +1347,10 @@ function App() {
 
           <button
             type="button"
-            className="nav-link"
+            className={`nav-link ${
+              page === 'creations' ? 'active-nav' : ''
+            }`}
+            onClick={() => setPage('creations')}
           >
             My Creations
           </button>
@@ -1231,7 +1369,9 @@ function App() {
 
         {page === 'characters'
           ? <CharactersPage />
-          : <GeneratePage />}
+          : page === 'creations'
+            ? <MyCreationsPage />
+            : <GeneratePage />}
       </div>
     </div>
   )
