@@ -4,6 +4,7 @@ const dotenv = require('dotenv')
 const multer = require('multer')
 const fs = require('fs')
 const path = require('path')
+const imageRoutes = require('./imageRoutes')
 
 dotenv.config()
 
@@ -12,6 +13,7 @@ const PORT = 5000
 
 app.use(cors())
 app.use(express.json())
+app.use('/api', imageRoutes)
 const creationsDirectory = path.join(__dirname, 'creations')
 
 if (!fs.existsSync(creationsDirectory)) {
@@ -545,15 +547,10 @@ app.post(
 
   async (req, res) => {
     try {
-      const prompt = req.body.prompt?.trim()
-      const ratio = req.body.ratio
-      const duration = req.body.duration
-
-      const generationMode =
-        req.body.generationMode || 'text'
-
-      const characterName =
-        req.body.characterName?.trim()
+      const prompt = req.body?.prompt?.trim()
+const quality = req.body?.quality || 'high'
+const ratio = req.body?.ratio || '1:1'
+const characterName = req.body?.characterName?.trim()
 
       if (!prompt) {
         return res.status(400).json({
