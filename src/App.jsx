@@ -18,7 +18,7 @@ function App() {
 
   const [characters, setCharacters] = useState([])
   const [characterName, setCharacterName] = useState('')
-  const [characterImage, setCharacterImage] = useState('')
+  const [characterImages, setCharacterImages] = useState([])
   const [selectedCharacter, setSelectedCharacter] = useState(null)
 
   const fileInputRef = useRef(null)
@@ -30,7 +30,33 @@ function App() {
         localStorage.getItem('anniveo-characters') || '[]'
       )
 
-      setCharacters(savedCharacters)
+      const upgradedCharacters = savedCharacters.map((character) => {
+        if (
+          Array.isArray(character.images) &&
+          character.images.length > 0
+        ) {
+          return character
+        }
+
+        if (character.image) {
+          return {
+            ...character,
+            images: [character.image],
+          }
+        }
+
+        return {
+          ...character,
+          images: [],
+        }
+      })
+
+      setCharacters(upgradedCharacters)
+
+      localStorage.setItem(
+        'anniveo-characters',
+        JSON.stringify(upgradedCharacters)
+      )
     } catch {
       setCharacters([])
     }
@@ -43,6 +69,26 @@ function App() {
       'anniveo-characters',
       JSON.stringify(items)
     )
+  }
+
+  const getCharacterImages = (character) => {
+    if (
+      Array.isArray(character?.images) &&
+      character.images.length > 0
+    ) {
+      return character.images
+    }
+
+    if (character?.image) {
+      return [character.image]
+    }
+
+    return []
+  }
+
+  const getPrimaryCharacterImage = (character) => {
+    const images = getCharacterImages(character)
+    return images[0] || ''
   }
 
   const openImagePicker = () => {
@@ -78,10 +124,10 @@ function App() {
 
     setSelectedImage(file)
     setImagePreview(previewUrl)
+    setSelectedCharacter(null)
     setVideoUrl('')
     setError('')
     setMessage('')
-    setSelectedCharacter(null)
   }
 
   const removeImage = () => {
@@ -101,9 +147,18 @@ function App() {
   }
 
   const handleCharacterImage = (event) => {
-    const file = event.target.files?.[0]
+    const files = Array.from(event.target.files || [])
 
-    if (!file) return
+    if (files.length === 0) return
+
+    const remainingSlots = 4 - characterImages.length
+
+    if (remainingSlots <= 0) {
+      alert('You can add up to 4 reference images.')
+      return
+    }
+
+    const selectedFiles = files.slice(0, remainingSlots)
 
     const allowedTypes = [
       'image/jpeg',
@@ -111,25 +166,54 @@ function App() {
       'image/webp',
     ]
 
-    if (!allowedTypes.includes(file.type)) {
-      alert('Please select a JPG, PNG, or WebP image.')
+    const invalidFile = selectedFiles.find(
+      (file) => !allowedTypes.includes(file.type)
+    )
+
+    if (invalidFile) {
+      alert('Please use only JPG, PNG, or WebP images.')
       return
     }
 
-    if (file.size > 3 * 1024 * 1024) {
-      alert(
-        'For saved characters, please use an image smaller than 3 MB.'
+    const oversizedFile = selectedFiles.find(
+      (file) => file.size > 3 * 1024 * 1024
+    )
+
+    if (oversizedFile) {
+      alert('Each reference image must be smaller than 3 MB.')
+      return
+    }
+
+    Promise.all(
+      selectedFiles.map(
+        (file) =>
+          new Promise((resolve, reject) => {
+            const reader = new FileReader()
+
+            reader.onload = () => resolve(reader.result)
+            reader.onerror = reject
+
+            reader.readAsDataURL(file)
+          })
       )
-      return
-    }
+    )
+      .then((images) => {
+        setCharacterImages((current) => [
+          ...current,
+          ...images,
+        ])
+      })
+      .catch(() => {
+        alert('ANNIVEO could not read one of the images.')
+      })
 
-    const reader = new FileReader()
+    event.target.value = ''
+  }
 
-    reader.onload = () => {
-      setCharacterImage(reader.result)
-    }
-
-    reader.readAsDataURL(file)
+  const removeCharacterReference = (index) => {
+    setCharacterImages((current) =>
+      current.filter((_, imageIndex) => imageIndex !== index)
+    )
   }
 
   const createCharacter = () => {
@@ -138,15 +222,16 @@ function App() {
       return
     }
 
-    if (!characterImage) {
-      alert('Please add a reference image.')
+    if (characterImages.length === 0) {
+      alert('Please add at least one reference image.')
       return
     }
 
     const newCharacter = {
       id: Date.now(),
       name: characterName.trim(),
-      image: characterImage,
+      image: characterImages[0],
+      images: characterImages,
     }
 
     const updatedCharacters = [
@@ -158,14 +243,14 @@ function App() {
       saveCharacters(updatedCharacters)
 
       setCharacterName('')
-      setCharacterImage('')
+      setCharacterImages([])
 
       if (characterInputRef.current) {
         characterInputRef.current.value = ''
       }
     } catch {
       alert(
-        'The character could not be saved. Try using a smaller reference image.'
+        'The character could not be saved. Browser storage may be full. Try smaller reference images.'
       )
     }
   }
@@ -186,7 +271,13 @@ function App() {
 
   const useCharacter = async (character) => {
     try {
-      const response = await fetch(character.image)
+      const primaryImage = getPrimaryCharacterImage(character)
+
+      if (!primaryImage) {
+        throw new Error('Character has no reference image.')
+      }
+
+      const response = await fetch(primaryImage)
       const blob = await response.blob()
 
       const extension =
@@ -206,7 +297,7 @@ function App() {
 
       setSelectedCharacter(character)
       setSelectedImage(file)
-      setImagePreview(character.image)
+      setImagePreview(primaryImage)
 
       setPrompt('')
       setVideoUrl('')
@@ -217,9 +308,7 @@ function App() {
     } catch (err) {
       console.error(err)
 
-      alert(
-        'ANNIVEO could not load this character.'
-      )
+      alert('ANNIVEO could not load this character.')
     }
   }
 
@@ -240,20 +329,59 @@ function App() {
       setError('')
       setVideoUrl('')
 
-      setMessage(
-        selectedImage
-          ? 'ANNIVEO is animating your image...'
-          : 'ANNIVEO is creating your video...'
-      )
-
       const formData = new FormData()
 
       formData.append('prompt', prompt.trim())
       formData.append('ratio', ratio)
       formData.append('duration', duration)
 
-      if (selectedImage) {
+      if (selectedCharacter) {
+        const references = getCharacterImages(selectedCharacter)
+
+        setMessage(
+          `Preparing ${references.length} references for ${selectedCharacter.name}...`
+        )
+
+        formData.append('characterName', selectedCharacter.name)
+        formData.append('generationMode', 'character')
+
+        for (let index = 0; index < references.length; index++) {
+          const reference = references[index]
+          const response = await fetch(reference)
+
+          if (!response.ok) {
+            throw new Error(
+              `Could not load reference ${index + 1}.`
+            )
+          }
+
+          const blob = await response.blob()
+
+          const extension =
+            blob.type === 'image/png'
+              ? 'png'
+              : blob.type === 'image/webp'
+                ? 'webp'
+                : 'jpg'
+
+          const referenceFile = new File(
+            [blob],
+            `${selectedCharacter.name}-reference-${index + 1}.${extension}`,
+            {
+              type: blob.type || 'image/jpeg',
+            }
+          )
+
+          formData.append('characterImages', referenceFile)
+        }
+      } else if (selectedImage) {
+        setMessage('ANNIVEO is animating your image...')
+
         formData.append('image', selectedImage)
+        formData.append('generationMode', 'image')
+      } else {
+        setMessage('ANNIVEO is creating your video...')
+        formData.append('generationMode', 'text')
       }
 
       const response = await fetch(
@@ -272,6 +400,13 @@ function App() {
             ? data.message
             : 'Video generation failed.'
         )
+      }
+
+      if (data.mode === 'character-test') {
+        setMessage(
+          `${data.characterName}: backend received ${data.referenceCount} reference images successfully.`
+        )
+        return
       }
 
       if (!data.videoUrl) {
@@ -310,7 +445,7 @@ function App() {
         }`}
         onClick={() => setPage('generate')}
       >
-        <span>✦</span>
+        <span>âœ¦</span>
         Generate
       </button>
 
@@ -318,7 +453,7 @@ function App() {
         type="button"
         className="side-item"
       >
-        <span>▣</span>
+        <span>â–£</span>
         Projects
       </button>
 
@@ -329,7 +464,7 @@ function App() {
         }`}
         onClick={() => setPage('characters')}
       >
-        <span>♙</span>
+        <span>â™™</span>
         Characters
       </button>
 
@@ -337,7 +472,7 @@ function App() {
         type="button"
         className="side-item"
       >
-        <span>♫</span>
+        <span>â™«</span>
         Audio
       </button>
 
@@ -345,7 +480,7 @@ function App() {
         type="button"
         className="side-item"
       >
-        <span>⚙</span>
+        <span>âš™</span>
         Settings
       </button>
 
@@ -385,11 +520,11 @@ function App() {
               }}
             >
               <img
-                src={selectedCharacter.image}
+                src={getPrimaryCharacterImage(selectedCharacter)}
                 alt={selectedCharacter.name}
                 style={{
-                  width: '42px',
-                  height: '42px',
+                  width: '48px',
+                  height: '48px',
                   borderRadius: '50%',
                   objectFit: 'cover',
                 }}
@@ -411,7 +546,12 @@ function App() {
                     fontSize: '11px',
                   }}
                 >
-                  Character selected
+                  Character selected â€¢{' '}
+                  {getCharacterImages(selectedCharacter).length}{' '}
+                  reference
+                  {getCharacterImages(selectedCharacter).length === 1
+                    ? ''
+                    : 's'}
                 </div>
               </div>
             </div>
@@ -430,9 +570,11 @@ function App() {
               setPrompt(event.target.value)
             }
             placeholder={
-              selectedImage
-                ? 'The character looks toward the camera and moves naturally...'
-                : 'A woman walks through a futuristic African city at night...'
+              selectedCharacter
+                ? `Describe what ${selectedCharacter.name} should do in this scene...`
+                : selectedImage
+                  ? 'Describe how the subject should move...'
+                  : 'A woman walks through a futuristic African city at night...'
             }
           />
 
@@ -449,14 +591,14 @@ function App() {
               type="button"
               onClick={openImagePicker}
             >
-              ＋{' '}
+              ï¼‹{' '}
               {selectedImage
                 ? 'Replace Image'
                 : 'Add Image'}
             </button>
 
             <button type="button">
-              ✦ Enhance Prompt
+              âœ¦ Enhance Prompt
             </button>
           </div>
 
@@ -560,12 +702,12 @@ function App() {
             disabled={isGenerating}
           >
             {isGenerating
-              ? '✦ Creating your video...'
+              ? 'âœ¦ Creating your video...'
               : selectedCharacter
-                ? `✦ Generate with ${selectedCharacter.name}`
+                ? `âœ¦ Generate with ${selectedCharacter.name}`
                 : selectedImage
-                  ? '✦ Generate from Image'
-                  : '✦ Generate Video'}
+                  ? 'âœ¦ Generate from Image'
+                  : 'âœ¦ Generate Video'}
           </button>
 
           <p className="cost">
@@ -628,7 +770,7 @@ function App() {
             ) : (
               <div className="preview-content">
                 <div className="play">
-                  {isGenerating ? '✦' : '▶'}
+                  {isGenerating ? 'âœ¦' : 'â–¶'}
                 </div>
 
                 <h3>
@@ -660,12 +802,12 @@ function App() {
               </span>
 
               <p>
-                {ratio} • {duration}
+                {ratio} â€¢ {duration}
               </p>
             </div>
 
             <div className="video-actions">
-              <button type="button">♡</button>
+              <button type="button">â™¡</button>
 
               {videoUrl && (
                 <button
@@ -674,11 +816,11 @@ function App() {
                     window.open(videoUrl, '_blank')
                   }
                 >
-                  ↓
+                  â†“
                 </button>
               )}
 
-              <button type="button">⋮</button>
+              <button type="button">â‹®</button>
             </div>
           </div>
         </div>
@@ -724,7 +866,8 @@ function App() {
           </div>
         ) : (
           <div className="empty-library">
-            <div>▶</div>
+            <div>â–¶</div>
+
             <h3>No videos yet</h3>
 
             <p>
@@ -753,8 +896,8 @@ function App() {
             <h2>Characters</h2>
 
             <p>
-              Save reference characters and reuse them in
-              your videos.
+              Save several views of a character and reuse
+              them when creating videos.
             </p>
           </div>
         </div>
@@ -772,8 +915,9 @@ function App() {
             <h2>Create Character</h2>
 
             <p className="description">
-              Add a clear reference image and give your
-              character a name.
+              Add up to four clear reference images. A
+              front-facing portrait should be the first
+              image.
             </p>
 
             <label htmlFor="characterName">
@@ -787,7 +931,7 @@ function App() {
               onChange={(event) =>
                 setCharacterName(event.target.value)
               }
-              placeholder="Example: Amara"
+              placeholder="Example: Anita"
               style={{
                 width: '100%',
                 boxSizing: 'border-box',
@@ -804,6 +948,7 @@ function App() {
             <input
               ref={characterInputRef}
               type="file"
+              multiple
               accept="image/jpeg,image/png,image/webp"
               onChange={handleCharacterImage}
               style={{ display: 'none' }}
@@ -820,22 +965,82 @@ function App() {
                 cursor: 'pointer',
               }}
             >
-              ＋ Add Reference Image
+              ï¼‹ Add Reference Images
             </button>
 
-            {characterImage && (
-              <img
-                src={characterImage}
-                alt="Character reference"
+            <p
+              style={{
+                color: '#9aa69f',
+                fontSize: '11px',
+                marginTop: '8px',
+              }}
+            >
+              {characterImages.length}/4 references selected
+            </p>
+
+            {characterImages.length > 0 && (
+              <div
                 style={{
-                  width: '100%',
-                  maxHeight: '280px',
-                  objectFit: 'contain',
-                  marginTop: '15px',
-                  borderRadius: '12px',
-                  background: '#080b09',
+                  display: 'grid',
+                  gridTemplateColumns:
+                    'repeat(2, minmax(0, 1fr))',
+                  gap: '8px',
+                  marginTop: '12px',
                 }}
-              />
+              >
+                {characterImages.map((image, index) => (
+                  <div
+                    key={`${image.slice(0, 30)}-${index}`}
+                    style={{
+                      position: 'relative',
+                    }}
+                  >
+                    <img
+                      src={image}
+                      alt={`Character reference ${index + 1}`}
+                      style={{
+                        width: '100%',
+                        height: '130px',
+                        objectFit: 'cover',
+                        borderRadius: '10px',
+                        background: '#080b09',
+                      }}
+                    />
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        removeCharacterReference(index)
+                      }
+                      style={{
+                        position: 'absolute',
+                        top: '6px',
+                        right: '6px',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Ã—
+                    </button>
+
+                    {index === 0 && (
+                      <div
+                        style={{
+                          position: 'absolute',
+                          left: '6px',
+                          bottom: '6px',
+                          padding: '4px 7px',
+                          borderRadius: '10px',
+                          background: 'rgba(0,0,0,0.75)',
+                          color: '#ffffff',
+                          fontSize: '10px',
+                        }}
+                      >
+                        Primary
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
             )}
 
             <button
@@ -862,7 +1067,7 @@ function App() {
 
             {characters.length === 0 ? (
               <div className="empty-library">
-                <div>♙</div>
+                <div>â™™</div>
 
                 <h3>No characters yet</h3>
 
@@ -876,74 +1081,104 @@ function App() {
                 style={{
                   display: 'grid',
                   gridTemplateColumns:
-                    'repeat(auto-fill, minmax(180px, 1fr))',
+                    'repeat(auto-fill, minmax(200px, 1fr))',
                   gap: '16px',
                 }}
               >
-                {characters.map((character) => (
-                  <div
-                    key={character.id}
-                    style={{
-                      padding: '12px',
-                      border: '1px solid #26352f',
-                      borderRadius: '14px',
-                      background: '#101713',
-                    }}
-                  >
-                    <img
-                      src={character.image}
-                      alt={character.name}
-                      style={{
-                        width: '100%',
-                        height: '180px',
-                        objectFit: 'cover',
-                        borderRadius: '10px',
-                      }}
-                    />
+                {characters.map((character) => {
+                  const images = getCharacterImages(character)
 
-                    <h3
+                  return (
+                    <div
+                      key={character.id}
                       style={{
-                        color: '#ffffff',
-                        marginBottom: '5px',
+                        padding: '12px',
+                        border: '1px solid #26352f',
+                        borderRadius: '14px',
+                        background: '#101713',
                       }}
                     >
-                      {character.name}
-                    </h3>
+                      <img
+                        src={images[0]}
+                        alt={character.name}
+                        style={{
+                          width: '100%',
+                          height: '180px',
+                          objectFit: 'cover',
+                          borderRadius: '10px',
+                        }}
+                      />
 
-                    <p
-                      style={{
-                        color: '#28ec91',
-                        fontSize: '11px',
-                      }}
-                    >
-                      Reference saved
-                    </p>
+                      <h3
+                        style={{
+                          color: '#ffffff',
+                          marginBottom: '5px',
+                        }}
+                      >
+                        {character.name}
+                      </h3>
 
-                    <button
-                      type="button"
-                      className="generate"
-                      onClick={() =>
-                        useCharacter(character)
-                      }
-                    >
-                      Use Character
-                    </button>
+                      <p
+                        style={{
+                          color: '#28ec91',
+                          fontSize: '11px',
+                        }}
+                      >
+                        {images.length}{' '}
+                        reference
+                        {images.length === 1 ? '' : 's'} saved
+                      </p>
 
-                    <button
-                      type="button"
-                      onClick={() =>
-                        deleteCharacter(character.id)
-                      }
-                      style={{
-                        width: '100%',
-                        marginTop: '8px',
-                        cursor: 'pointer',
-                      }}
-                    >
-                      Delete
-                    </button>
-                  </div>
-                ))}
+                      {images.length > 1 && (
+                        <div
+                          style={{
+                            display: 'flex',
+                            gap: '5px',
+                            marginBottom: '10px',
+                          }}
+                        >
+                          {images.slice(1).map((image, index) => (
+                            <img
+                              key={`${character.id}-${index}`}
+                              src={image}
+                              alt=""
+                              style={{
+                                width: '38px',
+                                height: '38px',
+                                objectFit: 'cover',
+                                borderRadius: '7px',
+                              }}
+                            />
+                          ))}
+                        </div>
+                      )}
+
+                      <button
+                        type="button"
+                        className="generate"
+                        onClick={() =>
+                          useCharacter(character)
+                        }
+                      >
+                        Use Character
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          deleteCharacter(character.id)
+                        }
+                        style={{
+                          width: '100%',
+                          marginTop: '8px',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  )
+                })}
               </div>
             )}
           </div>
@@ -956,7 +1191,7 @@ function App() {
     <div className="app">
       <header className="topbar">
         <div className="brand">
-          <div className="logo-icon">▶</div>
+          <div className="logo-icon">â–¶</div>
 
           <div>
             <h1>ANNIVEO</h1>
