@@ -271,7 +271,10 @@ duplicate people, extra limbs, malformed hands,
 or distorted facial features.
         `.trim()
       }
-
+// Runway text-to-image accepts a maximum prompt length of 1000 characters.
+if (finalPrompt.length > 950) {
+  finalPrompt = finalPrompt.slice(0, 950)
+}
       const requestBody = {
         model,
         promptText: finalPrompt,
@@ -322,10 +325,16 @@ or distorted facial features.
         }
       )
 
-      const responseText =
+            const responseText =
         await response.text()
 
+      console.log('Runway status:', response.status)
+      console.log('Runway response:', responseText)
+
       let data
+       
+
+   
 
       try {
         data = JSON.parse(responseText)

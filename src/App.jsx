@@ -7,7 +7,8 @@ function App() {
   const [prompt, setPrompt] = useState('')
   const [ratio, setRatio] = useState('16:9')
   const [duration, setDuration] = useState('5s')
-
+  const [imageRatio, setImageRatio] = useState('1:1')
+  const [imageQuality, setImageQuality] = useState('high')
   const [isGenerating, setIsGenerating] = useState(false)
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
@@ -338,7 +339,148 @@ function App() {
       alert('ANNIVEO could not load this character.')
     }
   }
+const generateImage = async () => {
+  if (!prompt.trim()) {
+    setError('Please describe the image you want to create.')
+    setMessage('')
+    return
+  }
 
+  try {
+    setIsGenerating(true)
+    setError('')
+    setVideoUrl('')
+
+    setMessage(
+      selectedCharacter
+        ? `ANNIVEO is creating an image of ${selectedCharacter.name}...`
+        : 'ANNIVEO is creating your image...'
+    )
+
+    const formData = new FormData()
+
+    formData.append('prompt', prompt.trim())
+    formData.append('quality', imageQuality)
+    formData.append('ratio', imageRatio)
+
+    if (selectedCharacter) {
+      formData.append(
+        'characterName',
+        selectedCharacter.name
+      )
+
+      const references =
+        getCharacterImages(selectedCharacter)
+
+      for (
+        let index = 0;
+        index < references.length;
+        index++
+      ) {
+        const reference = references[index]
+
+        const response = await fetch(reference)
+
+        if (!response.ok) {
+          throw new Error(
+            `Could not load reference ${index + 1}.`
+          )
+        }
+
+        const blob = await response.blob()
+
+        const extension =
+          blob.type === 'image/png'
+            ? 'png'
+            : blob.type === 'image/webp'
+              ? 'webp'
+              : 'jpg'
+
+        const referenceFile = new File(
+          [blob],
+          `${selectedCharacter.name}-image-reference-${index + 1}.${extension}`,
+          {
+            type: blob.type || 'image/jpeg',
+          }
+        )
+
+        formData.append(
+          'referenceImages',
+          referenceFile
+        )
+      }
+    } else if (selectedImage) {
+      formData.append('referenceImages', selectedImage)
+      formData.append('characterName', 'Uploaded Reference')
+    }
+
+    const response = await fetch(
+      'http://localhost:5000/api/generate-image',
+      {
+        method: 'POST',
+        body: formData,
+      }
+    )
+
+    const data = await response.json()
+
+    if (!response.ok) {
+      throw new Error(
+        typeof data.message === 'string'
+          ? data.message
+          : 'Image generation failed.'
+      )
+    }
+
+    if (!data.imageUrl) {
+      throw new Error(
+        'The image was generated, but no image URL was returned.'
+      )
+    }
+
+    setImagePreview(data.imageUrl)
+
+    const generatedResponse =
+      await fetch(data.imageUrl)
+
+    if (!generatedResponse.ok) {
+      throw new Error(
+        'ANNIVEO generated the image but could not load it into the editor.'
+      )
+    }
+
+    const generatedBlob =
+      await generatedResponse.blob()
+
+    const generatedFile = new File(
+      [generatedBlob],
+      data.filename || `anniveo-${Date.now()}.png`,
+      {
+        type:
+          generatedBlob.type || 'image/png',
+      }
+    )
+
+    setSelectedImage(generatedFile)
+
+    setMessage(
+      selectedCharacter
+        ? `${selectedCharacter.name}'s ANNIVEO image is ready.`
+        : 'Your ANNIVEO image is ready.'
+    )
+  } catch (err) {
+    console.error(err)
+
+    setError(
+      err.message ||
+        'ANNIVEO could not generate your image.'
+    )
+
+    setMessage('')
+  } finally {
+    setIsGenerating(false)
+  }
+}
   const generateVideo = async () => {
     if (!prompt.trim()) {
       setError(
@@ -704,9 +846,7 @@ function App() {
                 <button
                   type="button"
                   key={item}
-                  className={
-                    ratio === item ? 'selected' : ''
-                  }
+                  className={ratio === item ? 'selected' : ''}
                   onClick={() => setRatio(item)}
                 >
                   {item}
@@ -723,11 +863,7 @@ function App() {
                 <button
                   type="button"
                   key={item}
-                  className={
-                    duration === item
-                      ? 'selected'
-                      : ''
-                  }
+                  className={duration === item ? 'selected' : ''}
                   onClick={() => setDuration(item)}
                 >
                   {item}
@@ -736,20 +872,78 @@ function App() {
             </div>
           </div>
 
-          <button
-            type="button"
-            className="generate"
-            onClick={generateVideo}
-            disabled={isGenerating}
+          <div className="setting-block">
+            <label>Image Quality</label>
+
+            <div className="options">
+              {[
+                ['high', 'High Quality'],
+                ['fast', 'Fast'],
+              ].map(([value, label]) => (
+                <button
+                  type="button"
+                  key={value}
+                  className={imageQuality === value ? 'selected' : ''}
+                  onClick={() => setImageQuality(value)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="setting-block">
+            <label>Image Ratio</label>
+
+            <div className="options">
+              {['1:1', '16:9', '9:16', '4:5'].map((item) => (
+                <button
+                  type="button"
+                  key={item}
+                  className={imageRatio === item ? 'selected' : ''}
+                  onClick={() => setImageRatio(item)}
+                >
+                  {item}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: '1fr 1fr',
+              gap: '10px',
+            }}
           >
-            {isGenerating
-              ? '✦ Creating your video...'
-              : selectedCharacter
-                ? `✦ Generate with ${selectedCharacter.name}`
-                : selectedImage
-                  ? '✦ Generate from Image'
-                  : '✦ Generate Video'}
-          </button>
+            <button
+              type="button"
+              className="generate"
+              onClick={generateImage}
+              disabled={isGenerating}
+            >
+              {isGenerating
+                ? '✦ Creating...'
+                : selectedCharacter
+                  ? `✦ Create ${selectedCharacter.name} Image`
+                  : '✦ Generate Image'}
+            </button>
+
+            <button
+              type="button"
+              className="generate"
+              onClick={generateVideo}
+              disabled={isGenerating}
+            >
+              {isGenerating
+                ? '▶ Creating...'
+                : selectedCharacter
+                  ? `▶ Create ${selectedCharacter.name} Video`
+                  : selectedImage
+                    ? '▶ Animate Image'
+                    : '▶ Generate Video'}
+            </button>
+          </div>
 
           <p className="cost">
             AI generation may use provider credits

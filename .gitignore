@@ -32,3 +32,6 @@ server/uploads/
 server/creations/*.mp4
 server/server-before-storage.js
 server/server-before-image-generator.js
+src/App-before-image-ui.jsx
+
+server/creations/
