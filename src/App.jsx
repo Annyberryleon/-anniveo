@@ -16,6 +16,8 @@ function App() {
 
   const [selectedImage, setSelectedImage] = useState(null)
   const [imagePreview, setImagePreview] = useState('')
+  const [referenceImages, setReferenceImages] = useState([])
+  const [referencePreviews, setReferencePreviews] = useState([])
 
   const [characters, setCharacters] = useState([])
   const [characterName, setCharacterName] = useState('')
@@ -124,54 +126,68 @@ function App() {
   }
 
   const handleImageChange = (event) => {
-    const file = event.target.files?.[0]
-
-    if (!file) return
-
-    const allowedTypes = [
-      'image/jpeg',
-      'image/png',
-      'image/webp',
-    ]
-
-    if (!allowedTypes.includes(file.type)) {
-      setError('Please select a JPG, PNG, or WebP image.')
+    const files = Array.from(event.target.files || [])
+    if (!files.length) return
+    const remainingSlots = 4 - referenceImages.length
+    if (remainingSlots <= 0) {
+      setError('You can add up to 4 reference images.')
+      event.target.value = ''
       return
     }
-
-    if (file.size > 10 * 1024 * 1024) {
-      setError('Please select an image smaller than 10 MB.')
+    const selectedFiles = files.slice(0, remainingSlots)
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp']
+    if (selectedFiles.some((file) => !allowedTypes.includes(file.type))) {
+      setError('Please select only JPG, PNG, or WebP images.')
+      event.target.value = ''
       return
     }
-
-    if (imagePreview?.startsWith('blob:')) {
-      URL.revokeObjectURL(imagePreview)
+    if (selectedFiles.some((file) => file.size > 10 * 1024 * 1024)) {
+      setError('Each reference image must be smaller than 10 MB.')
+      event.target.value = ''
+      return
     }
-
-    const previewUrl = URL.createObjectURL(file)
-
-    setSelectedImage(file)
-    setImagePreview(previewUrl)
+    const newPreviews = selectedFiles.map((file) => URL.createObjectURL(file))
+    const nextFiles = [...referenceImages, ...selectedFiles].slice(0, 4)
+    const nextPreviews = [...referencePreviews, ...newPreviews].slice(0, 4)
+    setReferenceImages(nextFiles)
+    setReferencePreviews(nextPreviews)
+    setSelectedImage(nextFiles[0] || null)
+    setImagePreview(nextPreviews[0] || '')
     setSelectedCharacter(null)
     setVideoUrl('')
+    setError('')
+    setMessage('')
+    event.target.value = ''
+  }
+
+  const removeDirectReference = (index) => {
+    const preview = referencePreviews[index]
+    if (preview?.startsWith('blob:')) URL.revokeObjectURL(preview)
+    const nextFiles = referenceImages.filter((_, i) => i !== index)
+    const nextPreviews = referencePreviews.filter((_, i) => i !== index)
+    setReferenceImages(nextFiles)
+    setReferencePreviews(nextPreviews)
+    setSelectedImage(nextFiles[0] || null)
+    setImagePreview(nextPreviews[0] || '')
     setError('')
     setMessage('')
   }
 
   const removeImage = () => {
-    if (imagePreview?.startsWith('blob:')) {
+    referencePreviews.forEach((preview) => {
+      if (preview?.startsWith('blob:')) URL.revokeObjectURL(preview)
+    })
+    if (imagePreview?.startsWith('blob:') && !referencePreviews.includes(imagePreview)) {
       URL.revokeObjectURL(imagePreview)
     }
-
     setSelectedImage(null)
     setImagePreview('')
+    setReferenceImages([])
+    setReferencePreviews([])
     setSelectedCharacter(null)
     setError('')
     setMessage('')
-
-    if (fileInputRef.current) {
-      fileInputRef.current.value = ''
-    }
+    if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
   const handleCharacterImage = (event) => {
@@ -323,6 +339,11 @@ function App() {
         }
       )
 
+      referencePreviews.forEach((preview) => {
+        if (preview?.startsWith('blob:')) URL.revokeObjectURL(preview)
+      })
+      setReferenceImages([])
+      setReferencePreviews([])
       setSelectedCharacter(character)
       setSelectedImage(file)
       setImagePreview(primaryImage)
@@ -409,6 +430,11 @@ const generateImage = async () => {
           referenceFile
         )
       }
+    } else if (referenceImages.length > 0) {
+      referenceImages.forEach((referenceFile) => {
+        formData.append('referenceImages', referenceFile)
+      })
+      formData.append('characterName', 'Uploaded Reference')
     } else if (selectedImage) {
       formData.append('referenceImages', selectedImage)
       formData.append('characterName', 'Uploaded Reference')
@@ -767,6 +793,7 @@ const generateImage = async () => {
           <input
             ref={fileInputRef}
             type="file"
+            multiple
             accept="image/jpeg,image/png,image/webp"
             onChange={handleImageChange}
             style={{ display: 'none' }}
@@ -777,7 +804,7 @@ const generateImage = async () => {
   type="button"
   onClick={openImagePicker}
 >
-  {selectedImage ? 'Replace Image' : 'Add Image'}
+  {referenceImages.length ? 'Add More Photos' : 'Add Reference Photos'}
 </button>
 
             <button type="button">
@@ -785,7 +812,27 @@ const generateImage = async () => {
             </button>
           </div>
 
-          {selectedImage && (
+          {!selectedCharacter && referenceImages.length > 0 && (
+            <div style={{ marginTop: '14px', padding: '10px', border: '1px solid #26352f', borderRadius: '12px', background: '#101713' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px' }}>
+                <span style={{ color: '#ffffff', fontSize: '12px', fontWeight: '600' }}>Reference Photos</span>
+                <span style={{ color: '#28ec91', fontSize: '11px' }}>{referenceImages.length}/4</span>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '8px' }}>
+                {referencePreviews.map((preview, index) => (
+                  <div key={`${preview}-${index}`} style={{ position: 'relative' }}>
+                    <img src={preview} alt={`Reference ${index + 1}`} style={{ width: '100%', height: '115px', objectFit: 'cover', borderRadius: '8px', background: '#080b09' }} />
+                    <button type="button" onClick={() => removeDirectReference(index)} style={{ position: 'absolute', top: '6px', right: '6px', cursor: 'pointer' }}>×</button>
+                    {index === 0 && <span style={{ position: 'absolute', left: '6px', bottom: '6px', padding: '3px 6px', borderRadius: '8px', background: 'rgba(0,0,0,0.75)', color: '#ffffff', fontSize: '9px' }}>Primary</span>}
+                  </div>
+                ))}
+              </div>
+              {referenceImages.length < 4 && <button type="button" onClick={openImagePicker} style={{ width: '100%', marginTop: '10px', cursor: 'pointer' }}>＋ Add More References</button>}
+              <button type="button" onClick={removeImage} style={{ width: '100%', marginTop: '8px', cursor: 'pointer' }}>Remove All References</button>
+            </div>
+          )}
+
+          {selectedImage && (selectedCharacter || referenceImages.length === 0) && (
             <div
               style={{
                 marginTop: '14px',
