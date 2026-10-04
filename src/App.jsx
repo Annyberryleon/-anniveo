@@ -2007,8 +2007,19 @@ const generateImage = async () => {
           <button
             type="button"
             className="profile"
+            aria-label="ANNIVEO profile"
           >
-            A
+            <img
+              src="/anniveo-icon.png"
+              alt=""
+              style={{
+                width: '100%',
+                height: '100%',
+                objectFit: 'cover',
+                borderRadius: '50%',
+                display: 'block',
+              }}
+            />
           </button>
         </nav>
       </header>
@@ -2017,17 +2028,17 @@ const generateImage = async () => {
         <Sidebar />
 
         {page === 'characters' ? (
-  <CharactersPage />
+  CharactersPage()
 ) : page === 'creations' ? (
-  <MyCreationsPage />
+  MyCreationsPage()
 ) : page === 'projects' ? (
-  <ProjectsPage />
+  ProjectsPage()
 ) : page === 'audio' ? (
-  <AudioPage />
+  AudioPage()
 ) : page === 'settings' ? (
-  <SettingsPage />
+  SettingsPage()
 ) : (
-  <GeneratePage />
+  GeneratePage()
 )}
          
           
@@ -2039,6 +2050,9 @@ const generateImage = async () => {
 }
 
 export default App
+
+
+
 
 
 
