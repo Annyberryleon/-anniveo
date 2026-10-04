@@ -39,26 +39,34 @@ function App() {
         localStorage.getItem('anniveo-characters') || '[]'
       )
 
-      const upgradedCharacters = savedCharacters.map((character) => {
-        if (
-          Array.isArray(character.images) &&
-          character.images.length > 0
-        ) {
-          return character
-        }
+     const upgradedCharacters = savedCharacters.map((character) => {
+  const images =
+    Array.isArray(character.images) &&
+    character.images.length > 0
+      ? character.images
+      : character.image
+        ? [character.image]
+        : []
 
-        if (character.image) {
-          return {
-            ...character,
-            images: [character.image],
-          }
-        }
+  const isHoney =
+    character.name?.trim().toLowerCase() === 'honey'
 
-        return {
-          ...character,
-          images: [],
-        }
-      })
+  return {
+    ...character,
+    images,
+    avatarId:
+      character.avatarId ||
+      (isHoney
+        ? '6c7726c1-a7e2-4132-862f-dc234e37d6e3'
+        : ''),
+    avatarStatus:
+      character.avatarStatus ||
+      (isHoney ? 'READY' : ''),
+    voicePreset:
+      character.voicePreset ||
+      (isHoney ? 'maya' : ''),
+  }
+})
 
       setCharacters(upgradedCharacters)
 
@@ -264,8 +272,10 @@ function App() {
     )
   }
 
-  const createCharacter = () => {
-    if (!characterName.trim()) {
+    const createCharacter = async () => {
+    const name = characterName.trim()
+
+    if (!name) {
       alert('Please enter a character name.')
       return
     }
@@ -275,19 +285,62 @@ function App() {
       return
     }
 
-    const newCharacter = {
-      id: Date.now(),
-      name: characterName.trim(),
-      image: characterImages[0],
-      images: characterImages,
-    }
-
-    const updatedCharacters = [
-      newCharacter,
-      ...characters,
-    ]
-
     try {
+      setIsGenerating(true)
+      setError('')
+      setMessage(
+        `ANNIVEO is preparing ${name} as a talking character...`
+      )
+
+      const avatarResponse = await fetch(
+        'http://localhost:5000/api/create-avatar',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            name,
+            referenceImage: characterImages[0],
+            voicePreset:
+              voice === 'Male' ? 'marcus' : 'maya',
+          }),
+        }
+      )
+
+      const avatarData = await avatarResponse.json()
+
+      if (!avatarResponse.ok) {
+        throw new Error(
+          typeof avatarData.message === 'string'
+            ? avatarData.message
+            : 'ANNIVEO could not create the talking character.'
+        )
+      }
+
+      if (!avatarData.avatar?.id) {
+        throw new Error(
+          'The character was created, but no avatar ID was returned.'
+        )
+      }
+
+      const newCharacter = {
+        id: Date.now(),
+        name,
+        image: characterImages[0],
+        images: characterImages,
+        avatarId: avatarData.avatar.id,
+        avatarStatus:
+          avatarData.avatar.status || 'PROCESSING',
+        voicePreset:
+          voice === 'Male' ? 'marcus' : 'maya',
+      }
+
+      const updatedCharacters = [
+        newCharacter,
+        ...characters,
+      ]
+
       saveCharacters(updatedCharacters)
 
       setCharacterName('')
@@ -296,10 +349,26 @@ function App() {
       if (characterInputRef.current) {
         characterInputRef.current.value = ''
       }
-    } catch {
-      alert(
-        'The character could not be saved. Browser storage may be full. Try smaller reference images.'
+
+      setMessage(
+        avatarData.avatar.status === 'READY'
+          ? `${name} is saved and ready to speak.`
+          : `${name} is saved. ANNIVEO is preparing the talking character.`
       )
+    } catch (err) {
+      console.error(
+        'ANNIVEO CHARACTER CREATION ERROR:',
+        err
+      )
+
+      setError(
+        err.message ||
+          'ANNIVEO could not create the character.'
+      )
+
+      setMessage('')
+    } finally {
+      setIsGenerating(false)
     }
   }
 
@@ -661,18 +730,16 @@ const generateImage = async () => {
   }
 
 
-  const generateTalkingAvatar = async () => {
+    const generateTalkingAvatar = async () => {
     if (!selectedCharacter) {
-      setError('Please select Honey from Characters first.')
+      setError('Please select a character first.')
       setMessage('')
       return
     }
 
-    if (
-      selectedCharacter.name.trim().toLowerCase() !== 'honey'
-    ) {
+    if (!selectedCharacter.avatarId) {
       setError(
-        'Talking Avatar is currently connected to Honey only.'
+        `${selectedCharacter.name} does not have a talking avatar yet.`
       )
       setMessage('')
       return
@@ -680,7 +747,7 @@ const generateImage = async () => {
 
     if (!dialogue.trim()) {
       setError(
-        'Please enter the words Honey should say in the Dialogue box.'
+        `Please enter the words ${selectedCharacter.name} should say in the Dialogue box.`
       )
       setMessage('')
       return
@@ -690,8 +757,9 @@ const generateImage = async () => {
       setIsGenerating(true)
       setError('')
       setVideoUrl('')
+
       setMessage(
-        'ANNIVEO is creating Honey talking...'
+        `ANNIVEO is creating ${selectedCharacter.name}'s talking video...`
       )
 
       const response = await fetch(
@@ -702,8 +770,7 @@ const generateImage = async () => {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            avatarId:
-              '6c7726c1-a7e2-4132-862f-dc234e37d6e3',
+            avatarId: selectedCharacter.avatarId,
             dialogue: dialogue.trim(),
             voicePreset:
               voice === 'Male' ? 'marcus' : 'maya',
@@ -723,7 +790,7 @@ const generateImage = async () => {
 
       if (!data.videoUrl) {
         throw new Error(
-          'Honey was generated, but no video URL was returned.'
+          `${selectedCharacter.name} was generated, but no video URL was returned.`
         )
       }
 
@@ -737,7 +804,8 @@ const generateImage = async () => {
         language,
         voice,
         lipSync: true,
-        characterName: 'Honey',
+        characterName: selectedCharacter.name,
+        avatarId: selectedCharacter.avatarId,
         ratio,
         duration,
         mode: 'talking-avatar',
@@ -757,14 +825,14 @@ const generateImage = async () => {
       }
 
       setMessage(
-        'Honey talking video is ready.'
+        `${selectedCharacter.name}'s talking video is ready.`
       )
     } catch (err) {
       console.error(err)
 
       setError(
         err.message ||
-          'ANNIVEO could not create Honey talking.'
+          `ANNIVEO could not create ${selectedCharacter.name}'s talking video.`
       )
 
       setMessage('')
@@ -851,7 +919,7 @@ const generateImage = async () => {
             an AI-generated video.
           </p>
 
-          {selectedCharacter && (
+                   {selectedCharacter && (
             <div
               style={{
                 display: 'flex',
@@ -1179,23 +1247,22 @@ const generateImage = async () => {
           </div>
 
 
-          {selectedCharacter &&
-            selectedCharacter.name.trim().toLowerCase() === 'honey' && (
-              <button
-                type="button"
-                className="generate"
-                onClick={generateTalkingAvatar}
-                disabled={isGenerating || !dialogue.trim()}
-                style={{
-                  width: '100%',
-                  marginTop: '10px',
-                }}
-              >
-                {isGenerating
-                  ? 'Creating Honey Talking Video...'
-                  : 'Create Honey Talking Video'}
-              </button>
-            )}
+          {selectedCharacter && selectedCharacter.avatarId && (
+            <button
+              type="button"
+              className="generate"
+              onClick={generateTalkingAvatar}
+              disabled={isGenerating || !dialogue.trim()}
+              style={{
+                width: '100%',
+                marginTop: '10px',
+              }}
+            >
+              {isGenerating
+                ? `Creating ${selectedCharacter.name} Talking Video...`
+                : `Create ${selectedCharacter.name} Talking Video`}
+            </button>
+          )}
 
 
           <p className="cost">
@@ -1972,6 +2039,9 @@ const generateImage = async () => {
 }
 
 export default App
+
+
+
 
 
 
