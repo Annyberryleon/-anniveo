@@ -1,4 +1,4 @@
-﻿const express = require('express')
+const express = require('express')
 const cors = require('cors')
 const dotenv = require('dotenv')
 const multer = require('multer')
@@ -14,6 +14,7 @@ const PORT = 5000
 app.use(cors())
 app.use(express.json())
 app.use('/api', imageRoutes)
+
 const creationsDirectory = path.join(__dirname, 'creations')
 
 if (!fs.existsSync(creationsDirectory)) {
@@ -55,6 +56,59 @@ async function saveGeneratedVideo(sourceUrl, name = 'video') {
   return {
     filename,
     videoUrl: `http://localhost:${PORT}/creations/${encodeURIComponent(filename)}`,
+  }
+}
+
+async function saveGeneratedAudio(sourceUrl, name = 'speech') {
+  console.log('')
+  console.log('Saving speech to ANNIVEO...')
+
+  const response = await fetch(sourceUrl)
+
+  if (!response.ok) {
+    throw new Error(
+      `Could not download generated speech. HTTP ${response.status}`
+    )
+  }
+
+  const arrayBuffer = await response.arrayBuffer()
+  const buffer = Buffer.from(arrayBuffer)
+
+  const contentType =
+    response.headers.get('content-type') || ''
+
+  let extension = 'mp3'
+
+  if (contentType.includes('wav')) {
+    extension = 'wav'
+  } else if (contentType.includes('mpeg')) {
+    extension = 'mp3'
+  } else if (contentType.includes('mp4')) {
+    extension = 'm4a'
+  } else if (contentType.includes('aac')) {
+    extension = 'aac'
+  }
+
+  const filename =
+    `${safeFileName(name)}-${Date.now()}.${extension}`
+
+  const filePath =
+    path.join(creationsDirectory, filename)
+
+  await fs.promises.writeFile(
+    filePath,
+    buffer
+  )
+
+  console.log(
+    'ANNIVEO speech saved:',
+    filename
+  )
+
+  return {
+    filename,
+    audioUrl:
+      `http://localhost:${PORT}/creations/${encodeURIComponent(filename)}`,
   }
 }
 
@@ -222,7 +276,7 @@ async function waitForRunwayTask(taskId) {
 
       if (!videoUrl) {
         throw new Error(
-          'Runway completed the task but returned no video URL.'
+          'Runway completed the task but returned no output URL.'
         )
       }
 
@@ -245,7 +299,7 @@ async function waitForRunwayTask(taskId) {
         task.failure ||
           task.failureCode ||
           task.message ||
-          'Runway could not generate the video.'
+          'Runway could not complete the generation.'
       )
     }
   }
@@ -254,6 +308,307 @@ async function waitForRunwayTask(taskId) {
     'The Runway generation took longer than expected.'
   )
 }
+
+// --------------------------------------------------
+// ANNIVEO speech generation
+// --------------------------------------------------
+
+async function generateSpeech(dialogue, voice = 'Female') {
+  if (!dialogue?.trim()) {
+    return null
+  }
+
+  const presetId =
+    voice.toLowerCase() === 'male'
+      ? 'Arjun'
+      : 'Maya'
+
+  const requestBody = {
+    model: 'eleven_multilingual_v2',
+    promptText: dialogue.trim().slice(0, 1000),
+    voice: {
+      type: 'runway-preset',
+      presetId,
+    },
+  }
+
+  console.log('')
+  console.log('======================================')
+  console.log('ANNIVEO SPEECH GENERATION')
+  console.log('======================================')
+  console.log('Voice:', presetId)
+  console.log(
+    'Characters:',
+    requestBody.promptText.length
+  )
+
+  const response = await fetch(
+    'https://api.dev.runwayml.com/v1/text_to_speech',
+    {
+      method: 'POST',
+
+      headers: {
+        Authorization:
+          `Bearer ${process.env.RUNWAYML_API_SECRET}`,
+
+        'Content-Type': 'application/json',
+
+        'X-Runway-Version': '2024-11-06',
+      },
+
+      body: JSON.stringify(requestBody),
+    }
+  )
+
+  const responseText = await response.text()
+
+  let data
+
+  try {
+    data = JSON.parse(responseText)
+  } catch {
+    throw new Error(
+      'Runway returned an unreadable speech response.'
+    )
+  }
+
+  if (!response.ok) {
+    console.error(
+      'RUNWAY SPEECH ERROR:',
+      JSON.stringify(data, null, 2)
+    )
+
+    throw new Error(
+      data?.error ||
+        data?.message ||
+        'Runway could not generate speech.'
+    )
+  }
+
+  if (!data.id) {
+    throw new Error(
+      'Runway did not return a speech task ID.'
+    )
+  }
+
+  console.log('Speech task:', data.id)
+
+  const result =
+  await waitForRunwayTask(data.id)
+
+const savedAudio =
+  await saveGeneratedAudio(
+    result.videoUrl,
+    `speech-${presetId}`
+  )
+
+return {
+  audioUrl: savedAudio.audioUrl,
+  filename: savedAudio.filename,
+  task: result.task,
+}
+}
+
+async function createRunwayAvatar({
+  name,
+  referenceImage,
+  voicePreset = 'maya',
+}) {
+  console.log('')
+  console.log('======================================')
+  console.log('ANNIVEO CUSTOM AVATAR')
+  console.log('======================================')
+  console.log('Name:', name)
+  console.log('Voice:', voicePreset)
+
+  if (!name) {
+    throw new Error(
+      'A character name is required to create an avatar.'
+    )
+  }
+
+  if (!referenceImage) {
+    throw new Error(
+      'A reference image is required to create an avatar.'
+    )
+  }
+
+  const requestBody = {
+    name,
+    personality:
+      `${name} is a natural, expressive character used for ANNIVEO videos.`,
+    referenceImage,
+    voice: {
+      presetId: voicePreset,
+      type: 'runway-live-preset',
+    },
+    imageProcessing: 'optimize',
+  }
+
+  const response = await fetch(
+    'https://api.dev.runwayml.com/v1/avatars',
+    {
+      method: 'POST',
+
+      headers: {
+        Authorization:
+          `Bearer ${process.env.RUNWAYML_API_SECRET}`,
+
+        'Content-Type': 'application/json',
+
+        'X-Runway-Version': '2024-11-06',
+      },
+
+      body: JSON.stringify(requestBody),
+    }
+  )
+
+  const responseText = await response.text()
+
+  let avatar
+
+  try {
+    avatar = JSON.parse(responseText)
+  } catch {
+    throw new Error(
+      'Runway returned an unreadable avatar response.'
+    )
+  }
+
+  if (!response.ok) {
+    console.error(
+      'RUNWAY AVATAR ERROR:',
+      JSON.stringify(avatar, null, 2)
+    )
+
+    throw new Error(
+      avatar?.error ||
+        avatar?.message ||
+        'Runway could not create the avatar.'
+    )
+  }
+
+  console.log('Avatar ID:', avatar.id)
+  console.log('Avatar status:', avatar.status)
+
+  return avatar
+}
+
+async function generateAvatarVideo({
+  avatarId,
+  dialogue,
+  voicePreset = 'maya',
+}) {
+  console.log('')
+  console.log('======================================')
+  console.log('ANNIVEO TALKING AVATAR')
+  console.log('======================================')
+  console.log('Avatar ID:', avatarId)
+  console.log('Dialogue:', dialogue)
+  console.log('Voice:', voicePreset)
+
+  if (!avatarId) {
+    throw new Error(
+      'An avatar ID is required.'
+    )
+  }
+
+  if (!dialogue?.trim()) {
+    throw new Error(
+      'Dialogue is required for a talking video.'
+    )
+  }
+
+  const requestBody = {
+    avatar: {
+      type: 'custom',
+      avatarId,
+    },
+
+    model: 'gwm1_avatars',
+
+    speech: {
+      type: 'text',
+      text: dialogue.trim(),
+      voice: {
+        type: 'preset',
+        presetId: voicePreset,
+      },
+    },
+  }
+
+  const response = await fetch(
+    'https://api.dev.runwayml.com/v1/avatar_videos',
+    {
+      method: 'POST',
+
+      headers: {
+        Authorization:
+          `Bearer ${process.env.RUNWAYML_API_SECRET}`,
+
+        'Content-Type': 'application/json',
+
+        'X-Runway-Version': '2024-11-06',
+      },
+
+      body: JSON.stringify(requestBody),
+    }
+  )
+
+  const responseText = await response.text()
+
+  let data
+
+  try {
+    data = JSON.parse(responseText)
+  } catch {
+    throw new Error(
+      'Runway returned an unreadable avatar video response.'
+    )
+  }
+
+  if (!response.ok) {
+    console.error(
+      'RUNWAY AVATAR VIDEO ERROR:',
+      JSON.stringify(data, null, 2)
+    )
+
+    throw new Error(
+      data?.error ||
+        data?.message ||
+        'Runway could not create the talking avatar video.'
+    )
+  }
+
+  console.log(
+    'Talking avatar task:',
+    data.id
+  )
+
+  const result =
+    await waitForRunwayTask(data.id)
+
+  const savedVideo =
+    await saveGeneratedVideo(
+      result.videoUrl,
+      'honey-talking'
+    )
+
+  return {
+    taskId: data.id,
+    videoUrl: savedVideo.videoUrl,
+    filename: savedVideo.filename,
+    task: result.task,
+  }
+}
+
+    
+
+  
+    
+    
+ 
+
 
 // --------------------------------------------------
 // Gen-4.5
@@ -363,7 +718,9 @@ async function createGen45Video({
     )
   }
 
-  console.log('Runway accepted Gen-4.5 request.')
+  console.log(
+    'Runway accepted Gen-4.5 request.'
+  )
   console.log('Task ID:', data.id)
 
   return data.id
@@ -398,12 +755,15 @@ async function createCharacterVideo({
     WAN 3 can address references in the prompt as
     [Image 1], [Image 2], etc.
 
-    We explicitly tell the model that every supplied
-    image represents the same ANNIVEO character.
+    Every supplied image represents the same
+    ANNIVEO character.
   */
 
   const referenceLabels = references
-    .map((_, index) => `[Image ${index + 1}]`)
+    .map(
+      (_, index) =>
+        `[Image ${index + 1}]`
+    )
     .join(', ')
 
   const characterPrompt = `
@@ -432,10 +792,12 @@ ${prompt}
   console.log('======================================')
   console.log('Character:', characterName)
   console.log('Model: wan3')
+
   console.log(
     'References:',
     references.length
   )
+
   console.log('Ratio:', ratio)
   console.log('Duration:', duration)
   console.log('Audio: disabled')
@@ -531,11 +893,199 @@ ${prompt}
     'WAN 3 accepted the character request.'
   )
   console.log('Task ID:', data.id)
-  console.log('Generating character video...')
+  console.log(
+    'Generating character video...'
+  )
 
   return data.id
 }
+// --------------------------------------------------
+// Speech test route
+// --------------------------------------------------
 
+app.post('/api/test-speech', async (req, res) => {
+  try {
+    const dialogue =
+      req.body?.dialogue?.trim()
+
+    const voice =
+      req.body?.voice || 'Female'
+
+    if (!dialogue) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please enter dialogue to speak.',
+      })
+    }
+
+    if (!process.env.RUNWAYML_API_SECRET) {
+      return res.status(500).json({
+        success: false,
+        message: 'Runway API key is missing.',
+      })
+    }
+
+    const speechResult =
+      await generateSpeech(dialogue, voice)
+
+    return res.json({
+      success: true,
+      message: 'ANNIVEO speech is ready.',
+      audioUrl: speechResult.audioUrl,
+      voice,
+    })
+  } catch (error) {
+    console.error('')
+    console.error('ANNIVEO SPEECH TEST ERROR')
+    console.error(error?.stack || error)
+
+    return res.status(500).json({
+      success: false,
+      message:
+        error?.message ||
+        'ANNIVEO could not generate speech.',
+    })
+  }
+})
+// --------------------------------------------------
+// Create custom ANNIVEO avatar
+// --------------------------------------------------
+
+app.post(
+  '/api/create-avatar',
+  express.json({ limit: '8mb' }),
+  async (req, res) => {
+    try {
+      const name =
+        req.body?.name?.trim()
+
+      const referenceImage =
+        req.body?.referenceImage
+
+      const voicePreset =
+        req.body?.voicePreset || 'maya'
+
+      if (!name) {
+        return res.status(400).json({
+          success: false,
+          message:
+            'Please provide a character name.',
+        })
+      }
+
+      if (!referenceImage) {
+        return res.status(400).json({
+          success: false,
+          message:
+            'Please provide a reference image.',
+        })
+      }
+
+      if (!process.env.RUNWAYML_API_SECRET) {
+        return res.status(500).json({
+          success: false,
+          message:
+            'Runway API key is missing.',
+        })
+      }
+
+      const avatar =
+        await createRunwayAvatar({
+          name,
+          referenceImage,
+          voicePreset,
+        })
+
+      return res.json({
+        success: true,
+        message:
+          'ANNIVEO avatar creation started.',
+        avatar,
+      })
+    } catch (error) {
+      console.error(
+        'ANNIVEO AVATAR ERROR:',
+        error
+      )
+
+      return res.status(500).json({
+        success: false,
+        message:
+          error?.message ||
+          'ANNIVEO could not create the avatar.',
+      })
+    }
+  }
+)
+// --------------------------------------------------
+// Generate talking avatar video
+// --------------------------------------------------
+
+app.post(
+  '/api/talking-avatar',
+  async (req, res) => {
+    try {
+      const avatarId =
+        req.body?.avatarId?.trim()
+
+      const dialogue =
+        req.body?.dialogue?.trim()
+
+      const voicePreset =
+        req.body?.voicePreset || 'maya'
+
+      if (!avatarId) {
+        return res.status(400).json({
+          success: false,
+          message:
+            'Please provide an avatar ID.',
+        })
+      }
+
+      if (!dialogue) {
+        return res.status(400).json({
+          success: false,
+          message:
+            'Please enter dialogue for the character.',
+        })
+      }
+
+      if (!process.env.RUNWAYML_API_SECRET) {
+        return res.status(500).json({
+          success: false,
+          message:
+            'Runway API key is missing.',
+        })
+      }
+
+      const result =
+        await generateAvatarVideo({
+          avatarId,
+          dialogue,
+          voicePreset,
+        })
+
+      return res.json({
+        success: true,
+        message:
+          'ANNIVEO talking video is ready.',
+        ...result,
+      })
+    } catch (error) {
+      console.error(
+        'ANNIVEO TALKING AVATAR ERROR:',
+        error
+      )
+
+      return res.status(500).json({
+        success: false,
+        message:
+          error?.message ||
+          'ANNIVEO could not generate the talking video.',
+      })
+    }
+  }
+)
 // --------------------------------------------------
 // Main video generation route
 // --------------------------------------------------
@@ -547,10 +1097,46 @@ app.post(
 
   async (req, res) => {
     try {
-      const prompt = req.body?.prompt?.trim()
-const quality = req.body?.quality || 'high'
-const ratio = req.body?.ratio || '1:1'
-const characterName = req.body?.characterName?.trim()
+      const prompt =
+        req.body?.prompt?.trim()
+
+      const quality =
+        req.body?.quality || 'high'
+
+      const ratio =
+        req.body?.ratio || '16:9'
+
+      const duration =
+        req.body?.duration || '5s'
+
+      const generationMode =
+        req.body?.generationMode ||
+        'standard'
+
+      const characterName =
+        req.body?.characterName?.trim()
+
+      const dialogue =
+        req.body?.dialogue?.trim() || ''
+
+      const language =
+        req.body?.language || 'English'
+
+      const voice =
+        req.body?.voice || 'Female'
+
+      const lipSync =
+        req.body?.lipSync === 'true'
+
+      console.log('')
+      console.log('ANNIVEO VIDEO OPTIONS')
+      console.log(
+        'Dialogue:',
+        dialogue || '(none)'
+      )
+      console.log('Language:', language)
+      console.log('Voice:', voice)
+      console.log('Lip Sync:', lipSync)
 
       if (!prompt) {
         return res.status(400).json({
@@ -561,7 +1147,9 @@ const characterName = req.body?.characterName?.trim()
         })
       }
 
-      if (!process.env.RUNWAYML_API_SECRET) {
+      if (
+        !process.env.RUNWAYML_API_SECRET
+      ) {
         return res.status(500).json({
           success: false,
 
@@ -574,8 +1162,12 @@ const characterName = req.body?.characterName?.trim()
         getDuration(duration)
 
       if (
-        !Number.isFinite(durationNumber) ||
-        ![5, 10].includes(durationNumber)
+        !Number.isFinite(
+          durationNumber
+        ) ||
+        ![5, 10].includes(
+          durationNumber
+        )
       ) {
         return res.status(400).json({
           success: false,
@@ -585,11 +1177,41 @@ const characterName = req.body?.characterName?.trim()
         })
       }
 
-      // --------------------------------------------------
-      // SAVED CHARACTER MODE
-      // --------------------------------------------------
+      // --------------------------------------------
+      // Generate speech when dialogue is supplied
+      // --------------------------------------------
 
-      if (generationMode === 'character') {
+      let speechResult = null
+
+      if (dialogue) {
+        console.log('')
+        console.log(
+          'Dialogue detected. Generating speech...'
+        )
+
+        speechResult =
+          await generateSpeech(
+            dialogue,
+            voice
+          )
+
+        console.log(
+          'ANNIVEO speech ready.'
+        )
+
+        console.log(
+          'Speech URL:',
+          speechResult.audioUrl
+        )
+      }
+
+      // --------------------------------------------
+      // SAVED CHARACTER MODE
+      // --------------------------------------------
+
+      if (
+        generationMode === 'character'
+      ) {
         const characterImages =
           req.files?.characterImages || []
 
@@ -602,7 +1224,9 @@ const characterName = req.body?.characterName?.trim()
           })
         }
 
-        if (characterImages.length === 0) {
+        if (
+          characterImages.length === 0
+        ) {
           return res.status(400).json({
             success: false,
 
@@ -633,7 +1257,9 @@ const characterName = req.body?.characterName?.trim()
           })
 
         const result =
-          await waitForRunwayTask(taskId)
+          await waitForRunwayTask(
+            taskId
+          )
 
         const savedVideo =
           await saveGeneratedVideo(
@@ -642,9 +1268,15 @@ const characterName = req.body?.characterName?.trim()
           )
 
         console.log('')
-        console.log('======================================')
-        console.log('CHARACTER VIDEO COMPLETED')
-        console.log('======================================')
+        console.log(
+          '======================================'
+        )
+        console.log(
+          'CHARACTER VIDEO COMPLETED'
+        )
+        console.log(
+          '======================================'
+        )
         console.log(
           'Character:',
           characterName
@@ -657,7 +1289,16 @@ const characterName = req.body?.characterName?.trim()
           'Task ID:',
           taskId
         )
-        console.log('======================================')
+
+        if (speechResult) {
+          console.log(
+            'Speech generated: yes'
+          )
+        }
+
+        console.log(
+          '======================================'
+        )
 
         return res.json({
           success: true,
@@ -665,26 +1306,40 @@ const characterName = req.body?.characterName?.trim()
           message:
             `${characterName}'s ANNIVEO video is ready.`,
 
-          videoUrl: savedVideo.videoUrl,
+          videoUrl:
+            savedVideo.videoUrl,
 
-          filename: savedVideo.filename,
+          filename:
+            savedVideo.filename,
+
+          audioUrl:
+            speechResult?.audioUrl ||
+            null,
 
           taskId,
 
-          mode: 'character-video',
+          mode:
+            'character-video',
 
-          model: 'wan3',
+          model:
+            'wan3',
 
           characterName,
 
           referenceCount:
             characterImages.length,
+
+          language,
+
+          voice,
+
+          lipSync,
         })
       }
 
-      // --------------------------------------------------
+      // --------------------------------------------
       // NORMAL TEXT / SINGLE IMAGE MODE
-      // --------------------------------------------------
+      // --------------------------------------------
 
       const runwayRatio =
         getGen45Ratio(ratio)
@@ -740,13 +1395,30 @@ const characterName = req.body?.characterName?.trim()
         })
 
       const result =
-        await waitForRunwayTask(taskId)
+        await waitForRunwayTask(
+          taskId
+        )
 
       console.log('')
-      console.log('======================================')
-      console.log('ANNIVEO VIDEO COMPLETED')
-      console.log('======================================')
-      console.log('Task ID:', taskId)
+      console.log(
+        '======================================'
+      )
+      console.log(
+        'ANNIVEO VIDEO COMPLETED'
+      )
+      console.log(
+        '======================================'
+      )
+      console.log(
+        'Task ID:',
+        taskId
+      )
+
+      if (speechResult) {
+        console.log(
+          'Speech generated: yes'
+        )
+      }
 
       return res.json({
         success: true,
@@ -755,17 +1427,30 @@ const characterName = req.body?.characterName?.trim()
           ? 'Your ANNIVEO image-to-video creation is ready.'
           : 'Your ANNIVEO video is ready.',
 
-        videoUrl: result.videoUrl,
+        videoUrl:
+          result.videoUrl,
+
+        audioUrl:
+          speechResult?.audioUrl ||
+          null,
 
         taskId,
 
         mode: imageFile
           ? 'image-to-video'
           : 'text-to-video',
+
+        language,
+
+        voice,
+
+        lipSync,
       })
     } catch (error) {
       console.error('')
-      console.error('ANNIVEO GENERATION ERROR')
+      console.error(
+        'ANNIVEO GENERATION ERROR'
+      )
 
       console.error(
         error?.stack || error
@@ -866,9 +1551,9 @@ app.listen(PORT, () => {
     'Character references: up to 4'
   )
 
+  console.log(
+    'Text-to-speech: Eleven Multilingual v2 ready'
+  )
+
   console.log('======================================')
 })
-
-
-
-

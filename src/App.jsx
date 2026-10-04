@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+﻿import { useEffect, useRef, useState } from 'react'
 import './App.css'
 
 function App() {
@@ -7,6 +7,10 @@ function App() {
   const [prompt, setPrompt] = useState('')
   const [ratio, setRatio] = useState('16:9')
   const [duration, setDuration] = useState('5s')
+  const [dialogue, setDialogue] = useState('')
+  const [language, setLanguage] = useState('English')
+  const [voice, setVoice] = useState('Female')
+  const [lipSync, setLipSync] = useState(true)
   const [imageRatio, setImageRatio] = useState('1:1')
   const [imageQuality, setImageQuality] = useState('high')
   const [isGenerating, setIsGenerating] = useState(false)
@@ -529,6 +533,10 @@ const generateImage = async () => {
       formData.append('prompt', prompt.trim())
       formData.append('ratio', ratio)
       formData.append('duration', duration)
+      formData.append('dialogue', dialogue.trim())
+      formData.append('language', language)
+      formData.append('voice', voice)
+      formData.append('lipSync', String(lipSync))
 
       if (selectedCharacter) {
         const references = getCharacterImages(selectedCharacter)
@@ -616,6 +624,10 @@ const generateImage = async () => {
         id: Date.now(),
         videoUrl: data.videoUrl,
         prompt: prompt.trim(),
+        dialogue: dialogue.trim(),
+        language,
+        voice,
+        lipSync,
         characterName: selectedCharacter?.name || '',
         ratio,
         duration,
@@ -648,6 +660,118 @@ const generateImage = async () => {
     }
   }
 
+
+  const generateTalkingAvatar = async () => {
+    if (!selectedCharacter) {
+      setError('Please select Honey from Characters first.')
+      setMessage('')
+      return
+    }
+
+    if (
+      selectedCharacter.name.trim().toLowerCase() !== 'honey'
+    ) {
+      setError(
+        'Talking Avatar is currently connected to Honey only.'
+      )
+      setMessage('')
+      return
+    }
+
+    if (!dialogue.trim()) {
+      setError(
+        'Please enter the words Honey should say in the Dialogue box.'
+      )
+      setMessage('')
+      return
+    }
+
+    try {
+      setIsGenerating(true)
+      setError('')
+      setVideoUrl('')
+      setMessage(
+        'ANNIVEO is creating Honey talking...'
+      )
+
+      const response = await fetch(
+        'http://localhost:5000/api/talking-avatar',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            avatarId:
+              '6c7726c1-a7e2-4132-862f-dc234e37d6e3',
+            dialogue: dialogue.trim(),
+            voicePreset:
+              voice === 'Male' ? 'marcus' : 'maya',
+          }),
+        }
+      )
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(
+          typeof data.message === 'string'
+            ? data.message
+            : 'Talking avatar generation failed.'
+        )
+      }
+
+      if (!data.videoUrl) {
+        throw new Error(
+          'Honey was generated, but no video URL was returned.'
+        )
+      }
+
+      setVideoUrl(data.videoUrl)
+
+      const newCreation = {
+        id: Date.now(),
+        videoUrl: data.videoUrl,
+        prompt: prompt.trim(),
+        dialogue: dialogue.trim(),
+        language,
+        voice,
+        lipSync: true,
+        characterName: 'Honey',
+        ratio,
+        duration,
+        mode: 'talking-avatar',
+        createdAt: new Date().toISOString(),
+      }
+
+      try {
+        saveCreations([
+          newCreation,
+          ...creations,
+        ])
+      } catch (storageError) {
+        console.error(
+          'Could not save talking avatar locally:',
+          storageError
+        )
+      }
+
+      setMessage(
+        'Honey talking video is ready.'
+      )
+    } catch (err) {
+      console.error(err)
+
+      setError(
+        err.message ||
+          'ANNIVEO could not create Honey talking.'
+      )
+
+      setMessage('')
+    } finally {
+      setIsGenerating(false)
+    }
+  }
   const Sidebar = () => (
     <aside className="sidebar">
       <button
@@ -663,7 +787,10 @@ const generateImage = async () => {
 
       <button
         type="button"
-        className="side-item"
+        className={`side-item ${
+          page === 'projects' ? 'active' : ''
+        }`}
+        onClick={() => setPage('projects')}
       >
         <span>▣</span>
         Projects
@@ -682,7 +809,10 @@ const generateImage = async () => {
 
       <button
         type="button"
-        className="side-item"
+        className={`side-item ${
+          page === 'audio' ? 'active' : ''
+        }`}
+        onClick={() => setPage('audio')}
       >
         <span>♫</span>
         Audio
@@ -690,7 +820,10 @@ const generateImage = async () => {
 
       <button
         type="button"
-        className="side-item"
+        className={`side-item ${
+          page === 'settings' ? 'active' : ''
+        }`}
+        onClick={() => setPage('settings')}
       >
         <span>⚙</span>
         Settings
@@ -790,6 +923,59 @@ const generateImage = async () => {
             }
           />
 
+          <div style={{ marginTop: '16px', padding: '14px', border: '1px solid #26352f', borderRadius: '12px', background: '#101713' }}>
+            <label htmlFor="videoDialogue">Dialogue</label>
+            <textarea
+              id="videoDialogue"
+              value={dialogue}
+              onChange={(event) => setDialogue(event.target.value)}
+              placeholder="Type only the words the character should say..."
+              style={{ width: '100%', minHeight: '82px', boxSizing: 'border-box', marginTop: '7px' }}
+            />
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '10px', marginTop: '12px' }}>
+              <div>
+                <label htmlFor="videoLanguage">Language</label>
+                <select
+                  id="videoLanguage"
+                  value={language}
+                  onChange={(event) => setLanguage(event.target.value)}
+                  style={{ width: '100%', marginTop: '7px', padding: '11px', borderRadius: '10px', border: '1px solid #26352f', background: '#0b110e', color: '#ffffff' }}
+                >
+                  {['English','French','Spanish','German','Portuguese','Italian','Dutch','Polish','Hindi','Japanese','Korean','Chinese'].map((item) => (
+                    <option key={item} value={item}>{item}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label htmlFor="videoVoice">Voice</label>
+                <select
+                  id="videoVoice"
+                  value={voice}
+                  onChange={(event) => setVoice(event.target.value)}
+                  style={{ width: '100%', marginTop: '7px', padding: '11px', borderRadius: '10px', border: '1px solid #26352f', background: '#0b110e', color: '#ffffff' }}
+                >
+                  <option value="Female">Female</option>
+                  <option value="Male">Male</option>
+                </select>
+              </div>
+            </div>
+
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '14px', cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={lipSync}
+                onChange={(event) => setLipSync(event.target.checked)}
+              />
+              Lip Sync
+            </label>
+
+            <p style={{ color: '#9aa69f', fontSize: '10px', marginBottom: '0' }}>
+              Speech generation will be connected to the ANNIVEO backend next.
+            </p>
+          </div>
+
           <input
             ref={fileInputRef}
             type="file"
@@ -827,7 +1013,7 @@ const generateImage = async () => {
                   </div>
                 ))}
               </div>
-              {referenceImages.length < 4 && <button type="button" onClick={openImagePicker} style={{ width: '100%', marginTop: '10px', cursor: 'pointer' }}>＋ Add More References</button>}
+              {referenceImages.length < 4 && <button type="button" onClick={openImagePicker} style={{ width: '100%', marginTop: '10px', cursor: 'pointer' }}>+ Add More References</button>}
               <button type="button" onClick={removeImage} style={{ width: '100%', marginTop: '8px', cursor: 'pointer' }}>Remove All References</button>
             </div>
           )}
@@ -992,6 +1178,26 @@ const generateImage = async () => {
             </button>
           </div>
 
+
+          {selectedCharacter &&
+            selectedCharacter.name.trim().toLowerCase() === 'honey' && (
+              <button
+                type="button"
+                className="generate"
+                onClick={generateTalkingAvatar}
+                disabled={isGenerating || !dialogue.trim()}
+                style={{
+                  width: '100%',
+                  marginTop: '10px',
+                }}
+              >
+                {isGenerating
+                  ? 'Creating Honey Talking Video...'
+                  : 'Create Honey Talking Video'}
+              </button>
+            )}
+
+
           <p className="cost">
             AI generation may use provider credits
           </p>
@@ -1089,7 +1295,7 @@ const generateImage = async () => {
             </div>
 
             <div className="video-actions">
-              <button type="button">♡</button>
+              <button type="button">â™¡</button>
 
               {videoUrl && (
                 <button
@@ -1098,11 +1304,11 @@ const generateImage = async () => {
                     window.open(videoUrl, '_blank')
                   }
                 >
-                  ↓
+                  â†“
                 </button>
               )}
 
-              <button type="button">⋮</button>
+              <button type="button">â‹®</button>
             </div>
           </div>
         </div>
@@ -1341,7 +1547,7 @@ const generateImage = async () => {
                 cursor: 'pointer',
               }}
             >
-              ＋ Add Reference Images
+              + Add Reference Images
             </button>
 
             <p
@@ -1562,17 +1768,152 @@ const generateImage = async () => {
       </section>
     </main>
   )
+  const ProjectsPage = () => (
+    <main className="main">
+      <section className="creator">
+        <div className="create-panel">
+          <p className="eyebrow">ANNIVEO PROJECTS</p>
+          <h2>Projects</h2>
+          <p className="description">
+            Organize your ANNIVEO videos, images, characters, and audio into projects.
+          </p>
 
+          <div className="empty-library">
+            <div>▣</div>
+            <h3>No projects yet</h3>
+            <p>
+              Your saved ANNIVEO projects will appear here.
+            </p>
+
+            <button
+              type="button"
+              className="generate"
+              onClick={() => setPage('generate')}
+            >
+              Create New Project
+            </button>
+          </div>
+        </div>
+      </section>
+    </main>
+  )
+
+  const AudioPage = () => (
+    <main className="main">
+      <section className="creator">
+        <div className="create-panel">
+          <p className="eyebrow">ANNIVEO AUDIO</p>
+          <h2>Audio & Voices</h2>
+
+          <p className="description">
+            Create speech and manage voices for your ANNIVEO characters.
+          </p>
+
+          <div className="setting-block">
+            <label>Available Voice Types</label>
+
+            <div className="options">
+              <button type="button" className="selected">
+                Female
+              </button>
+
+              <button type="button">
+                Male
+              </button>
+            </div>
+          </div>
+
+          <div className="empty-library">
+            <div>♫</div>
+            <h3>Voice Studio</h3>
+            <p>
+              Your generated speech and character voices will appear here.
+            </p>
+          </div>
+        </div>
+      </section>
+    </main>
+  )
+
+  const SettingsPage = () => (
+    <main className="main">
+      <section className="creator">
+        <div className="create-panel">
+          <p className="eyebrow">ANNIVEO SETTINGS</p>
+          <h2>Settings</h2>
+
+          <p className="description">
+            Manage your ANNIVEO generation preferences.
+          </p>
+
+          <div className="setting-block">
+            <label>Default Video Ratio</label>
+
+            <div className="options">
+              {['16:9', '9:16'].map((item) => (
+                <button
+                  type="button"
+                  key={item}
+                  className={ratio === item ? 'selected' : ''}
+                  onClick={() => setRatio(item)}
+                >
+                  {item}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="setting-block">
+            <label>Default Duration</label>
+
+            <div className="options">
+              {['5s', '10s'].map((item) => (
+                <button
+                  type="button"
+                  key={item}
+                  className={duration === item ? 'selected' : ''}
+                  onClick={() => setDuration(item)}
+                >
+                  {item}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="setting-block">
+            <label>Lip Sync</label>
+
+            <label
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                marginTop: '10px',
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={lipSync}
+                onChange={(event) =>
+                  setLipSync(event.target.checked)
+                }
+              />
+              Enable lip sync by default
+            </label>
+          </div>
+        </div>
+      </section>
+    </main>
+  )
   return (
     <div className="app">
       <header className="topbar">
         <div className="brand">
-          <div className="logo-icon">▶</div>
-
-          <div>
-            <h1>ANNIVEO</h1>
-            <span>AI VIDEO STUDIO</span>
-          </div>
+          <img
+            src="/anniveo-logo.png"
+            alt="ANNIVEO AI Video Studio"
+            className="anniveo-logo"
+          />
         </div>
 
         <nav>
@@ -1608,14 +1949,30 @@ const generateImage = async () => {
       <div className="workspace">
         <Sidebar />
 
-        {page === 'characters'
-          ? <CharactersPage />
-          : page === 'creations'
-            ? <MyCreationsPage />
-            : <GeneratePage />}
+        {page === 'characters' ? (
+  <CharactersPage />
+) : page === 'creations' ? (
+  <MyCreationsPage />
+) : page === 'projects' ? (
+  <ProjectsPage />
+) : page === 'audio' ? (
+  <AudioPage />
+) : page === 'settings' ? (
+  <SettingsPage />
+) : (
+  <GeneratePage />
+)}
+         
+          
+            
+         
       </div>
     </div>
   )
 }
 
 export default App
+
+
+
+

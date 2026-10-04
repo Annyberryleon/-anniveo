@@ -658,3 +658,15 @@ textarea:focus {
     align-items: flex-start;
   }
 }
+.anniveo-logo {
+  display: block;
+  width: 190px;
+  max-width: 100%;
+  height: auto;
+  object-fit: contain;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+}

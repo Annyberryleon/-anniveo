@@ -35,3 +35,7 @@ server/server-before-image-generator.js
 src/App-before-image-ui.jsx
 
 server/creations/
+
+# Local ANNIVEO development backups
+src/App-before-*.jsx
+server/server-before-*.js
