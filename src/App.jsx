@@ -30,6 +30,10 @@ function App() {
 
   const [creations, setCreations] = useState([])
 
+  const [projects, setProjects] = useState([])
+  const [projectName, setProjectName] = useState('')
+  const [projectDescription, setProjectDescription] = useState('')
+
   const fileInputRef = useRef(null)
   const characterInputRef = useRef(null)
 
@@ -90,6 +94,62 @@ function App() {
       setCreations([])
     }
   }, [])
+
+  useEffect(() => {
+    try {
+      const savedProjects = JSON.parse(
+        localStorage.getItem('anniveo-projects') || '[]'
+      )
+
+      setProjects(
+        Array.isArray(savedProjects) ? savedProjects : []
+      )
+    } catch {
+      setProjects([])
+    }
+  }, [])
+
+  const saveProjects = (items) => {
+    setProjects(items)
+    localStorage.setItem(
+      'anniveo-projects',
+      JSON.stringify(items)
+    )
+  }
+
+  const createProject = () => {
+    const name = projectName.trim()
+    const description = projectDescription.trim()
+
+    if (!name) {
+      alert('Please enter a project name.')
+      return
+    }
+
+    const newProject = {
+      id: Date.now(),
+      name,
+      description,
+      creationIds: [],
+      createdAt: new Date().toISOString(),
+    }
+
+    saveProjects([
+      newProject,
+      ...projects,
+    ])
+
+    setProjectName('')
+    setProjectDescription('')
+  }
+
+  const deleteProject = (id) => {
+    const updatedProjects = projects.filter(
+      (project) => project.id !== id
+    )
+
+    saveProjects(updatedProjects)
+  }
 
   const saveCreations = (items) => {
     setCreations(items)
@@ -1362,7 +1422,7 @@ const generateImage = async () => {
             </div>
 
             <div className="video-actions">
-              <button type="button">â™¡</button>
+              <button type="button">♡</button>
 
               {videoUrl && (
                 <button
@@ -1371,11 +1431,11 @@ const generateImage = async () => {
                     window.open(videoUrl, '_blank')
                   }
                 >
-                  â†“
+                  ↓
                 </button>
               )}
 
-              <button type="button">â‹®</button>
+              <button type="button">⋮</button>
             </div>
           </div>
         </div>
@@ -1840,26 +1900,161 @@ const generateImage = async () => {
       <section className="creator">
         <div className="create-panel">
           <p className="eyebrow">ANNIVEO PROJECTS</p>
+
           <h2>Projects</h2>
+
           <p className="description">
             Organize your ANNIVEO videos, images, characters, and audio into projects.
           </p>
 
-          <div className="empty-library">
-            <div>▣</div>
-            <h3>No projects yet</h3>
-            <p>
-              Your saved ANNIVEO projects will appear here.
-            </p>
+          <div className="setting-block">
+            <label htmlFor="projectName">
+              Project Name
+            </label>
+
+            <input
+              id="projectName"
+              type="text"
+              value={projectName}
+              onChange={(event) =>
+                setProjectName(event.target.value)
+              }
+              placeholder="Example: Detective Series"
+            />
+
+            <label
+              htmlFor="projectDescription"
+              style={{ marginTop: '14px' }}
+            >
+              Description
+            </label>
+
+            <textarea
+              id="projectDescription"
+              value={projectDescription}
+              onChange={(event) =>
+                setProjectDescription(event.target.value)
+              }
+              placeholder="What are you creating?"
+              rows="3"
+            />
 
             <button
               type="button"
               className="generate"
-              onClick={() => setPage('generate')}
+              onClick={createProject}
+              disabled={!projectName.trim()}
+              style={{
+                width: '100%',
+                marginTop: '14px',
+              }}
             >
-              Create New Project
+              Create Project
             </button>
           </div>
+
+          {projects.length === 0 ? (
+            <div className="empty-library">
+              <div>▣</div>
+
+              <h3>No projects yet</h3>
+
+              <p>
+                Create your first ANNIVEO project above.
+              </p>
+            </div>
+          ) : (
+            <div
+              style={{
+                display: 'grid',
+                gap: '14px',
+                marginTop: '20px',
+              }}
+            >
+              {projects.map((project) => (
+                <div
+                  key={project.id}
+                  className="setting-block"
+                >
+                  <div
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      gap: '16px',
+                      alignItems: 'flex-start',
+                    }}
+                  >
+                    <div>
+                      <h3
+                        style={{
+                          marginTop: 0,
+                          marginBottom: '6px',
+                        }}
+                      >
+                        {project.name}
+                      </h3>
+
+                      <p
+                        style={{
+                          marginTop: 0,
+                          opacity: 0.8,
+                        }}
+                      >
+                        {project.description ||
+                          'No description'}
+                      </p>
+
+                      <p
+                        style={{
+                          fontSize: '12px',
+                          opacity: 0.65,
+                        }}
+                      >
+                        {project.creationIds?.length || 0}{' '}
+                        creations
+                      </p>
+
+                      <p
+                        style={{
+                          fontSize: '11px',
+                          opacity: 0.55,
+                        }}
+                      >
+                        Created{' '}
+                        {new Date(
+                          project.createdAt
+                        ).toLocaleDateString()}
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        deleteProject(project.id)
+                      }
+                      style={{
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Delete
+                    </button>
+                  </div>
+
+                  <button
+                    type="button"
+                    className="generate"
+                    onClick={() => setPage('generate')}
+                    style={{
+                      width: '100%',
+                      marginTop: '12px',
+                    }}
+                  >
+                    Open Project
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </section>
     </main>
@@ -2050,6 +2245,10 @@ const generateImage = async () => {
 }
 
 export default App
+
+
+
+
 
 
 
