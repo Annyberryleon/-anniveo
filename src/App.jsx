@@ -33,6 +33,7 @@ function App() {
   const [projects, setProjects] = useState([])
   const [projectName, setProjectName] = useState('')
   const [projectDescription, setProjectDescription] = useState('')
+  const [activeProject, setActiveProject] = useState(null)
 
   const fileInputRef = useRef(null)
   const characterInputRef = useRef(null)
@@ -761,6 +762,7 @@ const generateImage = async () => {
         ratio,
         duration,
         mode: data.mode || (selectedCharacter ? 'character-video' : selectedImage ? 'image-to-video' : 'text-to-video'),
+        projectId: activeProject?.id || null,
         createdAt: new Date().toISOString(),
       }
 
@@ -869,6 +871,7 @@ const generateImage = async () => {
         ratio,
         duration,
         mode: 'talking-avatar',
+        projectId: activeProject?.id || null,
         createdAt: new Date().toISOString(),
       }
 
@@ -979,7 +982,23 @@ const generateImage = async () => {
             an AI-generated video.
           </p>
 
-                   {selectedCharacter && (
+          {activeProject && (
+            <div
+              style={{
+                padding: '10px 12px',
+                marginBottom: '14px',
+                border: '1px solid #28ec91',
+                borderRadius: '10px',
+                background: '#101713',
+                color: '#28ec91',
+                fontSize: '13px',
+              }}
+            >
+              Active Project: <strong>{activeProject.name}</strong>
+            </div>
+          )}
+
+          {selectedCharacter && (
             <div
               style={{
                 display: 'flex',
@@ -2010,7 +2029,9 @@ const generateImage = async () => {
                           opacity: 0.65,
                         }}
                       >
-                        {project.creationIds?.length || 0}{' '}
+                        {creations.filter(
+  (creation) => creation.projectId === project.id
+).length}{' '}
                         creations
                       </p>
 
@@ -2043,7 +2064,10 @@ const generateImage = async () => {
                   <button
                     type="button"
                     className="generate"
-                    onClick={() => setPage('generate')}
+                    onClick={() => {
+  setActiveProject(project)
+  setPage('generate')
+}}
                     style={{
                       width: '100%',
                       marginTop: '12px',
@@ -2245,6 +2269,13 @@ const generateImage = async () => {
 }
 
 export default App
+
+
+
+
+
+
+
 
 
 
