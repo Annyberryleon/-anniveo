@@ -34,6 +34,7 @@ function App() {
   const [projectName, setProjectName] = useState('')
   const [projectDescription, setProjectDescription] = useState('')
   const [activeProject, setActiveProject] = useState(null)
+  const [viewingProject, setViewingProject] = useState(null)
 
   const fileInputRef = useRef(null)
   const characterInputRef = useRef(null)
@@ -1467,7 +1468,10 @@ const generateImage = async () => {
             <p>Your recent AI videos will appear here.</p>
           </div>
 
-          <button type="button" onClick={() => setPage('creations')}>
+          <button type="button" onClick={() => {
+              setViewingProject(null)
+              setPage('creations')
+            }}>
             View All
           </button>
         </div>
@@ -1502,7 +1506,7 @@ const generateImage = async () => {
           <div className="empty-library">
             <div>▶</div>
 
-            <h3>No videos yet</h3>
+            <h3>{viewingProject ? 'No videos in this project yet' : 'No videos yet'}</h3>
 
             <p>
               Your first ANNIVEO creation will appear here.
@@ -1519,15 +1523,28 @@ const generateImage = async () => {
         <div className="section-heading">
           <div>
             <p className="eyebrow">ANNIVEO LIBRARY</p>
-            <h2>My Creations</h2>
-            <p>Your saved ANNIVEO videos appear here.</p>
+            <h2>{viewingProject ? `${viewingProject.name} - Creations` : 'My Creations'}</h2>
+            <p>
+              {viewingProject
+                ? 'Videos saved under this project.'
+                : 'Your saved ANNIVEO videos appear here.'}
+            </p>
+            {viewingProject && (
+              <button
+                type="button"
+                onClick={() => setViewingProject(null)}
+                style={{ cursor: 'pointer', marginTop: '12px' }}
+              >
+                Back to All Creations
+              </button>
+            )}
           </div>
         </div>
 
-        {creations.length === 0 ? (
+        {creations.filter((creation) => !viewingProject || creation.projectId === viewingProject.id).length === 0 ? (
           <div className="empty-library">
             <div>▶</div>
-            <h3>No videos yet</h3>
+            <h3>{viewingProject ? 'No videos in this project yet' : 'No videos yet'}</h3>
             <p>Your first completed ANNIVEO video will appear here.</p>
           </div>
         ) : (
@@ -1539,7 +1556,7 @@ const generateImage = async () => {
               marginTop: '24px',
             }}
           >
-            {creations.map((creation) => (
+            {creations.filter((creation) => !viewingProject || creation.projectId === viewingProject.id).map((creation) => (
               <article
                 key={creation.id}
                 style={{
@@ -2063,6 +2080,21 @@ const generateImage = async () => {
 
                   <button
                     type="button"
+                    onClick={() => {
+                      setViewingProject(project)
+                      setPage('creations')
+                    }}
+                    style={{
+                      width: '100%',
+                      marginTop: '12px',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    View Creations
+                  </button>
+
+                  <button
+                    type="button"
                     className="generate"
                     onClick={() => {
   setActiveProject(project)
@@ -2218,7 +2250,10 @@ const generateImage = async () => {
             className={`nav-link ${
               page === 'creations' ? 'active-nav' : ''
             }`}
-            onClick={() => setPage('creations')}
+            onClick={() => {
+              setViewingProject(null)
+              setPage('creations')
+            }}
           >
             My Creations
           </button>
@@ -2269,6 +2304,14 @@ const generateImage = async () => {
 }
 
 export default App
+
+
+
+
+
+
+
+
 
 
 
