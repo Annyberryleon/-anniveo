@@ -1,4 +1,4 @@
-const express = require('express')
+﻿const express = require('express')
 const multer = require('multer')
 const fs = require('fs')
 const path = require('path')
@@ -255,25 +255,31 @@ The written request controls the scene,
 clothing, pose, expression, lighting,
 environment, and composition.
 
+Do not replace the person with another identity.
+Do not redesign the face or change skin tone.
+Maintain consistent facial features across scenes.
+Use realistic anatomy, natural skin texture,
+accurate hands, detailed clothing and lighting.
+No distorted faces, extra limbs or unwanted text.
+
 User request:
 ${prompt}
-
-Create a polished, high-quality image.
-Use realistic anatomy, natural skin texture,
-detailed hair and clothing, accurate hands
-and fingers, balanced lighting, sharp subject
-detail, clean edges, and a coherent background.
-
-Do not replace the person with another identity.
-Do not redesign the face.
-Do not add unwanted text, logos, watermarks,
-duplicate people, extra limbs, malformed hands,
-or distorted facial features.
         `.trim()
       }
 // Runway text-to-image accepts a maximum prompt length of 1000 characters.
 if (finalPrompt.length > 950) {
-  finalPrompt = finalPrompt.slice(0, 950)
+  const scenePrompt = prompt.trim()
+  const fixedLength = finalPrompt.length - scenePrompt.length
+  const availableLength = Math.max(0, 950 - fixedLength)
+
+  finalPrompt = finalPrompt.replace(
+    scenePrompt,
+    scenePrompt.slice(0, availableLength)
+  )
+
+  if (finalPrompt.length > 950) {
+    finalPrompt = finalPrompt.slice(0, 950)
+  }
 }
       const requestBody = {
         model,
@@ -463,3 +469,4 @@ if (finalPrompt.length > 950) {
 )
 
 module.exports = router
+
