@@ -769,7 +769,7 @@ async function createCharacterVideo({
   const characterPrompt = `
 ${referenceLabels} are reference images of the same person named ${characterName}.
 
-Maintain ${characterName}'s identity throughout the entire video. Preserve the same facial structure, eyes, nose, lips, complexion, apparent age, hairstyle, and overall recognizable appearance shown in the reference images.
+[Image 1] is the PRIMARY facial identity reference. Other images support the same identity. Maintain ${characterName}'s identity throughout the entire video. Preserve the same facial structure, eyes, nose, lips, complexion, apparent age, hairstyle, and overall recognizable appearance shown in the reference images.
 
 Do not substitute another person. Do not redesign the face. Keep facial proportions stable from the first frame to the last frame.
 
